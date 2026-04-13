@@ -1,0 +1,93 @@
+     50001210601081                  YEÐEN NÝL SU        AABBDAADEC
+     50002240601049                  UÞGUN ÞEYMA         BDDBCABDEC
+     50003230601081                  ÖZKIR MELEK         BDDBCABDDD
+     50004230601                     KURSES CEREN        BDDBCABDED
+     50005230601079                  ÖZCAN SENA          EDDBCABDEC
+     50006230601099                  ZENGÝN ESRA         BEBBCABDED
+     50007230601060                  ÝÞSEVER GAMZE       BDDBCABDED
+     50008230601055                  GENÇER NEHÝR        BADBCABDED
+     50009230601080                  ÖZER GAMZE          BDDCCABCDC
+     50010230601068                  KETBOÐA EYLÜL       BBDBCABDED
+     50011230601076                  ONUR MELÝS          BDCBCABDED
+     50012230601058                  GÜNDÜZ ELÝF YAREN   BABBCABDED
+     50013                           PINAR CEREN         BDDBCABDED
+     50014230601077                  OPSAR SILA          BDDBCABDED
+     50015230601082                  PAMUKOÐLU ZEYNEP BERBDDECABEDD
+     50016230601067                  KAYAÖNÜ NÝLAY       BBDBCABDEC
+     50017220601131                  ULUDAÐ UMUT CAN     CBDCBABEEB
+     50018230601108                  ONBAÞI LEYLANUR     BADEAABCDC
+     50019230601074                  KÜÇÜKBACAKÝREM      EDEBCAECCD
+     50020230601057                  GÜLER TUANA         BBDBCABEED
+     50021230601070                  KIZILTOPRARUKÝYE    BEDBCABBDD
+     50022230601119                  KÜS EMÝNE SENA      BDDBCABDED
+     50023230601069                  KILIÇARSLASUDENAZ   DABBAABCCC
+     50024220601056                  DURAN BURCU         BBBEDABEEB
+3    50025240601109                  PÝLÝÇ ESRA          BBDEEADDBD
+     50026230601054                  GARÝPCAN ECENAZ     BDDBCABDED
+     50027210601096                  OCAK ZEYNEP BET     EDDDCEBBED
+     50028230601124                  ÇARPAN SILA         BDDBCABDED
+     50029230601092                  VARLI ÖYKÜ          BDCECDBEAD
+     50030230601120                  ÖÇALAN SILA         BDDBCABDED
+     50031230601071                  KOÞAR AZÝZE         BDEBCAEABD
+     50032230601062                  KARAKAÞ GÜL AYÞE    BDDBCABDEC
+     50033230601127                  BAÞ EREN            BCDBBABDED
+     50034230601091                  ÜLKÜ KEREM ATA      BBCBCABDED
+     50035240601103                  ÖZALP AZRA EYLÜL    BDDBCABAED
+     50036230601063                  KAYA ÞÝLAN          DBDCCCDCED
+     50037230601086                  ÞAHÝNOL HANDAN      BDCBCABDAD
+     50038230601084                  SOYLU KAAN          BBDBCACDAC
+     50039230601072                  KOZAK YAREN         BCDBBABDED
+     50040230601088                  TALGA AYÞE          ADDCCCEEED
+     50041230601101                  SÜRÜCÜ ÝREM         BDDCBEECBC
+     50042230601053                  EVLÝOÐLU SELÝN      EDDBBABEBD
+     50043230601098                  YILMAZ ÝPEK         BBDBCABDED
+     50044230601097                  YILMAZ SUDE         BDEBCABDEC
+     50045230601094                  YILDIZ SAHRANUR     BDCCCABDED
+     50046230601078                  ÖZALP DÝLA          BDCBCABDED
+D    50047240601102                  EKÝN AZRA           BDDBCABDED
+     50048240601106                  KARAÇÖP ESMA        ADDBCABDED
+     50049230601089                  TOPAL ALARA         BDDBCABDED
+     50050210601005                  ZARZUR SÝDRA        EADCCADCCD
+     50051230601052                  ESKÝKURT GÜLÝZAR    BDDBCABDED
+     50052230601045                  DUTALANI ÝREMNUR    BDCECCBCEB
+     50053230601020                  AKTAN BERÝNSU       BDDCCABDED
+     50054210601064                  ATAÞ AHMET SELÝ     BBCBCABDEC
+     50055230601039                  ÇELEBÝ BEYZA        EDDBCABCDC
+     50056220601090                  ÖZTÜRK HANÝFE       BBBCAADABD
+     50057230601051                  ERKUL KARDELEN      BEDBCABDED
+     50058230601040                  ÇELÝK AYÞEGÜL       BDDBCABDED
+     50059230601018                  AK AZRA             CDCECABABB
+     50060220601043                  BEDÝR MELÝKE        BDDECABBED
+     50061230601022                  AVDAL KÜBRA         BBDBCEBDED
+     50062230601037                  ÇAÐLAR SENANUR      BBDBCABDED
+     50063230601036                  CÝNGÖZ BÜÞRA        BBDBCABDED
+     50064230601032                  BOSTANDEREFADÝK     BBDBCABDED
+     50065230601027                  BAÞPINAR ELÝF       BEDBCABCAD
+     50066230601028                  BAY ASLI            BBDBCABDCD
+     50067220601130                  TÜRKDÖNMEZBÜÞRA     BDDBCABBED
+     50068230601019                  AKBAÞ IRMAK DÝDE    DDEBCABEDD
+     50069230601050                  ERGÜN ÞEYMA         BDEBCABCEC
+     50070230601044                  DOÐANGÜNEÞBERÝL     BDEBCABCEC
+     50071220601064                  GÖK RÜMEYSA         BCDECABBBD
+     50072230601030                  BERK BEYZA          BDDBCABDBD
+     50073230601046                  DÜVENCÝ TUÐBA       BDDBCEADED
+     50074230601048                  ERDÝNÇ RÜMEYSA      BBDBCABDDD
+     50075220601124                  KOMANOVALICEREN     BBDBCEBDED
+D    50076230601043                  DEMÝRCÝ ÞEVVAL      BBBCCABCED
+     50077210601060                  ÖNDEROÐLU BURAK     CEDBAABC D
+     50078220601001                  ACIMAL ÖMER         BADBDABEDD
+     50079230601029                  BAYSAL ÞEBNEM EDA   BDCBCABAED
+     50080230601033                  BOZOÐLU DAMLA       BDDBCABDED
+     50081220601091                  PENBEGÜL MERVE      BAEBCDBDBD
+     50082230601038                  ÇAKIR GÖKÇE NAZ     BDDDEECCAD
+     50083210601047                  DENÝZ BARIÞCAN      ADCBCABCEC
+     5008400210601070                KARA ÝKRA           BBDBBABACD
+     50085                           GÜLER NÝLAY         BEDBCABDED
+     50086230601042                  DARICI EMRE         BBDBCABDED
+     50087210601098                  ALAKBARLÝ ÝLAHA     BDCBCADDED
+     50088230601035                  CANTEZ EFE          BDDBCABDED
+     50089230601021                  AKYÜZ AHSEN ZÝÞA    DBDCBACECB
+     50090230601017                  ADALI ZEYNEP YAR    BDDBCACDED
+     50091230601047                  ENHOÞ ELÝF BEYZA    BDEBCABDED
+     50092230601031                  BÝLÝROL ECEM        BDDBCABDED
+     50093230601049                  EREN ALMÝLAZEYN     BDEBCABDED

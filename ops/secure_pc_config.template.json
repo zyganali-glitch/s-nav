@@ -1,0 +1,23 @@
+{
+  "app": {
+    "host": "127.0.0.1",
+    "port": 8140,
+    "baseUrl": "http://127.0.0.1:8140",
+    "bundleExe": "C:\\SecureExam\\runtime\\SinavOkumaPlatformu.exe"
+  },
+  "paths": {
+    "root": "C:\\SecureExam",
+    "incoming": "C:\\SecureExam\\incoming",
+    "processed": "C:\\SecureExam\\incoming\\_processed",
+    "error": "C:\\SecureExam\\incoming\\_error",
+    "probeOutput": "C:\\SecureExam\\probe-output",
+    "runtime": "C:\\SecureExam\\runtime",
+    "logs": "C:\\SecureExam\\logs"
+  },
+  "bridge": {
+    "examCode": "TEKKITAPCIK",
+    "filePattern": "*.txt",
+    "pollMinutes": 1,
+    "taskName": "SinavOkumaBridge"
+  }
+}

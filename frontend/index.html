@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sınav Okuma Platformu</title>
+  <link rel="stylesheet" href="/static/css/app.css?v=20260413c">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero-copy-block">
+        <p class="eyebrow">Yerel optik okuma paneli</p>
+        <h1>Sınavı hazırla, okut, sonucu aynı ekranda gör.</h1>
+        <p class="hero-copy">
+          Bu arayüz öğretmenin sınav şablonunu hazırlamasını, operatörün ise SR-3500 veya dosya içe aktarma ile
+          okutmayı birkaç adımda tamamlamasını hedefler. İnternet gerektirmez, aynı makinede çalışır.
+        </p>
+        <div class="hero-actions">
+          <button id="loadStarterExamBtn" class="primary-button" type="button">Örnek sınav yükle</button>
+          <button id="jumpToOperatorBtn" class="ghost-button" type="button">Okutma alanına git</button>
+        </div>
+      </div>
+
+      <div class="hero-side">
+        <div class="hero-badges">
+          <span>İnternetsiz kullanım</span>
+          <span>SR-3500 hızlı akış</span>
+          <span>Dosya ile yedek içe aktarma</span>
+        </div>
+
+        <div class="hero-metrics">
+          <article class="hero-metric-card">
+            <p class="section-kicker">Kayıtlı sınav</p>
+            <strong id="libraryCountValue">0</strong>
+          </article>
+          <article class="hero-metric-card">
+            <p class="section-kicker">Seçili sınav</p>
+            <strong id="selectedExamValue">Yok</strong>
+          </article>
+          <article class="hero-metric-card">
+            <p class="section-kicker">Son oturum</p>
+            <strong id="sessionCountValue">0</strong>
+          </article>
+        </div>
+      </div>
+    </header>
+
+    <main class="workspace-grid">
+      <aside class="panel library-panel">
+        <div class="panel-head">
+          <div>
+            <p class="section-kicker">Sınavlar</p>
+            <h2>Sınav kütüphanesi</h2>
+          </div>
+          <button id="refreshLibraryBtn" class="ghost-button" type="button">Yenile</button>
+        </div>
+        <p class="muted-copy panel-intro">Soldan sınav seç, sağda düzenle veya doğrudan okutmaya geç.</p>
+        <div id="examLibrary" class="library-list"></div>
+      </aside>
+
+      <section class="panel teacher-panel">
+        <div class="panel-head">
+          <div>
+            <p class="section-kicker">Sınav hazırlığı</p>
+            <h2>Sınav tanımı</h2>
+          </div>
+          <div class="panel-actions">
+            <button id="newExamBtn" class="ghost-button" type="button">Yeni sınav</button>
+            <button id="saveExamBtn" class="primary-button" type="button">Sınavı kaydet</button>
+          </div>
+        </div>
+
+        <div class="meta-grid">
+          <label>
+            <span>Sınav kodu</span>
+            <input id="examCodeInput" type="text" placeholder="DENEME2026-04">
+          </label>
+          <label>
+            <span>Sınav başlığı</span>
+            <input id="examTitleInput" type="text" placeholder="Nisan genel denemesi">
+          </label>
+          <label class="full-span">
+            <span>Açıklama</span>
+            <textarea id="examDescriptionInput" rows="3" placeholder="Operatör notu, oturum tipi veya sınavın amacı"></textarea>
+          </label>
+          <label class="full-span">
+            <span>Kitapçık kodları</span>
+            <input id="bookletCodesInput" type="text" placeholder="A, B, C">
+            <small>Virgülle ayır. Her soru kartında ilgili kitapçık için sıra ve doğru cevap alanı oluşur.</small>
+          </label>
+          <label class="full-span">
+            <span>Optik kağıt formatı</span>
+            <select id="formTemplateSelect"></select>
+            <small>Kökteki optik_kagit_formatlari presetleri burada listelenir. Varsayılan format seçili gelir; diğer presetleri sınav bazında seçebilirsin.</small>
+          </label>
+        </div>
+
+        <section class="hint-card teacher-support-card">
+          <div class="panel-head compact-head">
+            <div>
+              <p class="section-kicker">Cevap anahtarı</p>
+              <h3>Toplu yükleme ve onboarding</h3>
+            </div>
+            <div id="answerKeyStatePill" class="status-pill is-warn">Henüz yüklenmedi</div>
+          </div>
+
+          <p class="muted-copy">
+            Sınavı önce metadata ile kaydedip cevap anahtarını sonradan toplu dosya olarak yükleyebilirsin. Böylece öğretmen tarafı tek tek soru kartı doldurmak zorunda kalmaz;
+            aynı veri modeli daha sonra gerçek optik cevap anahtarı okutmasına da bağlanır.
+          </p>
+
+          <div class="operator-grid">
+            <label class="full-span">
+              <span>Cevap anahtarı dosyası</span>
+              <input id="answerKeyFileInput" type="file" accept=".csv,.txt,.xlsx,.xlsm">
+            </label>
+          </div>
+
+          <div class="panel-actions">
+            <button id="uploadAnswerKeyBtn" class="secondary-button" type="button">Cevap anahtarını yükle</button>
+          </div>
+
+          <div id="answerKeyStatus" class="answer-key-status">
+            <p class="muted-copy">Henüz cevap anahtarı yüklenmedi. İstersen sınavı boş taslak olarak kaydet, sonra dosyayı yükle.</p>
+          </div>
+
+          <p class="muted-copy answer-key-help">
+            Desteklenen güvenli formatlar: detaylı eşleme için <code>canonical_no, group_label, weight, A_position, A_answer...</code>; pratik tek sıra için <code>booklet_code, Q1, Q2...</code> veya <code>booklet_code, answer_key</code>.
+            Çok kitapçıklı permutasyonlarda detaylı eşleme kullan.
+          </p>
+        </section>
+
+        <div class="question-toolbar">
+          <div>
+            <p class="section-kicker">Soru yapısı</p>
+            <h3>Kanonik soru kartları</h3>
+          </div>
+          <button id="addQuestionBtn" class="secondary-button" type="button">Soru ekle</button>
+        </div>
+        <div id="questionBuilder" class="question-stack"></div>
+      </section>
+
+      <section id="operatorPanel" class="panel operator-panel">
+        <div class="panel-head">
+          <div>
+            <p class="section-kicker">Okutma</p>
+            <h2>Operatör akışı</h2>
+          </div>
+          <div id="statusPill" class="status-pill is-warn">Hazır</div>
+        </div>
+
+        <div id="feedbackBanner" class="feedback-banner is-warn">
+          Dosya okumak için önce sınav seç, ardından dosyayı seçip içe aktarma butonuna bas.
+        </div>
+
+        <section class="guide-card">
+          <article>
+            <span class="guide-step">1</span>
+            <strong>Sınavı seç</strong>
+            <p>Aşağıdaki açılır listeden sınavı seç. Soldaki kartlar sadece hızlı erişim içindir.</p>
+          </article>
+          <article>
+            <span class="guide-step">2</span>
+            <strong>Okut veya dosya seç</strong>
+            <p>SR-3500 direct read ile okut ya da yedek olarak dosya içe aktar.</p>
+          </article>
+          <article>
+            <span class="guide-step">3</span>
+            <strong>Sonucu kontrol et</strong>
+            <p>Analiz kartları ve son oturumlar sağ altta hemen güncellenir.</p>
+          </article>
+        </section>
+
+        <div class="operator-grid">
+          <label>
+            <span>Sınav seç</span>
+            <select id="operatorExamSelect"></select>
+          </label>
+          <label>
+            <span>Aktif sınav kodu</span>
+            <input id="operatorExamCodeInput" type="text" placeholder="Seçilen sınav kodu" readonly>
+          </label>
+          <label>
+            <span>Okutma form tipi</span>
+            <select id="operatorFormTemplateSelect"></select>
+            <small>Gerekirse buradan okutma formatını override et. Kalıcı olması için sınavı yeniden kaydet.</small>
+          </label>
+          <label>
+            <span>Anahtar kitapçık override</span>
+            <select id="deviceBookletOverrideSelect"></select>
+          </label>
+          <label>
+            <span>Net kuralı</span>
+            <select id="netRuleSelect"></select>
+            <small>Boş bırakılırsa okuma yapılır ama net alanları bilinçli olarak boş kalır.</small>
+          </label>
+          <label class="full-span">
+            <span>Dosya seç</span>
+            <input id="importFileInput" type="file" accept=".csv,.txt,.xlsx,.xlsm">
+          </label>
+        </div>
+
+        <div class="hint-card">
+          <h3>Operator cevap anahtarı durumu</h3>
+          <p id="operatorAnswerKeyStatus" class="muted-copy">Erken fazın ana akışı budur: önce operatör aynı optik forma cevap anahtarını kodlayıp okutacak, sonra öğrenci tepsisi aynı yerleşim üzerinden puanlanacaktır.</p>
+        </div>
+
+        <div class="primary-action-row">
+          <button id="runImportBtnTop" class="primary-button wide-button" type="button">Seçili dosyayı oku ve analizi göster</button>
+        </div>
+
+        <section class="device-capture-card">
+          <div class="panel-head compact-head">
+            <div>
+              <p class="section-kicker">SR-3500 toplu okuma</p>
+              <h3>Tepsiyi oku ve ham matrisi çıkar</h3>
+            </div>
+            <div id="captureModePill" class="status-pill is-warn">Beklemede</div>
+          </div>
+
+          <p class="muted-copy capture-copy">
+            Aşağıdaki alan manuel veri girişi için değil, SR-3500 direct read sonucunda gelen ham mark matrisini görmek içindir.
+            Önce sınavı seç, sonra <strong>Sınavı oku</strong> butonuna bas; uygulama cihazı doğrudan komutlayıp sonucu burada gösterecektir.
+          </p>
+
+          <div class="capture-actions">
+            <button id="readOpticalAnswerKeyBtn" class="secondary-button" type="button">Cevap anahtarını okut</button>
+            <button id="deviceImportBtn" class="primary-button" type="button">Tepsiyi oku ve puanla</button>
+            <button id="armCaptureBtn" class="ghost-button" type="button">Ham analizi göster</button>
+            <button id="importCapturedBtn" class="secondary-button" type="button">Okunanları içe aktar</button>
+            <button id="clearCaptureBtn" class="ghost-button" type="button">Alanı temizle</button>
+          </div>
+
+          <label class="capture-field">
+            <span>Okuyucudan gelen veri</span>
+            <textarea
+              id="captureInput"
+              rows="7"
+              placeholder="Bu alanı elle doldurman gerekmez. SR-3500 direct read sonucu ham matris burada görünür.&#10;&#10;Kısayollar: Ctrl+Enter = içe aktar, Esc = temizle."
+            ></textarea>
+            <small>Not: Bu alan vendor API ile gelen ham matris ve cihaz analizini göstermek içindir. Otomatik puanlama için yukarıdaki "Tepsiyi oku ve puanla" akışını kullan.</small>
+          </label>
+
+          <div class="capture-meta-grid">
+            <div class="summary-card mini-card">
+              <p class="section-kicker">Çıktı satırı</p>
+              <strong id="captureStatsValue">0 satır</strong>
+            </div>
+            <div class="summary-card mini-card">
+              <p class="section-kicker">Canlı durum</p>
+              <strong id="captureStatusValue">Hazır</strong>
+            </div>
+          </div>
+
+          <details class="advanced-panel">
+            <summary>Gelişmiş ayarlar</summary>
+            <div class="advanced-grid">
+              <label>
+                <span>Analiz dosya adı</span>
+                <input id="captureFileNameInput" type="text" value="sr3500-live.txt">
+              </label>
+              <label>
+                <span>Maksimum form</span>
+                <input id="deviceMaxSheetsInput" type="number" min="0" step="1" value="0">
+                <small>0 ise tepsi boşalana kadar devam eder.</small>
+              </label>
+              <label>
+                <span>Okuma kolonu</span>
+                <input id="deviceColumnsInput" type="number" min="1" max="48" step="1" value="48">
+              </label>
+              <label>
+                <span>Okuma yöntemi</span>
+                <select id="deviceReadingMethodSelect">
+                  <option value="1">1 · Ön kenar kontrol</option>
+                  <option value="2">2 · Arka kenar kontrol</option>
+                  <option value="3" selected>3 · Direct</option>
+                  <option value="4">4 · FACOM</option>
+                  <option value="5">5 · Mark arası (üst kenarsız)</option>
+                  <option value="6">6 · Mark arası (üst kenarlı)</option>
+                </select>
+              </label>
+              <label>
+                <span>Kağıt kalınlığı</span>
+                <select id="deviceThicknessSelect">
+                  <option value="0" selected>0 · Otomatik</option>
+                  <option value="1">1 · 55 kg</option>
+                  <option value="2">2 · 72 kg</option>
+                  <option value="3">3 · 90 kg</option>
+                  <option value="4">4 · 110 kg</option>
+                  <option value="5">5 · 135 kg</option>
+                </select>
+              </label>
+              <label>
+                <span>Analiz eşiği</span>
+                <input id="deviceThresholdInput" type="number" min="1" max="16" step="1" value="12">
+              </label>
+              <label>
+                <span>Bekleme süresi (ms)</span>
+                <input id="captureIdleMsInput" type="number" min="250" step="50" value="900">
+              </label>
+              <label class="checkbox-row">
+                <input id="deviceBacksideCheckbox" type="checkbox">
+                <span>Arka yüz okuma açık</span>
+              </label>
+              <label class="checkbox-row">
+                <input id="autoArmCaptureCheckbox" type="checkbox" checked>
+                <span>Sınav seçilince okuma alanını hazır tut</span>
+              </label>
+              <label class="checkbox-row">
+                <input id="keepCaptureBufferCheckbox" type="checkbox">
+                <span>İçe aktardıktan sonra yakalanan veriyi koru</span>
+              </label>
+            </div>
+          </details>
+        </section>
+
+        <section class="hint-card">
+          <h3>Cihaz okuma analizi</h3>
+          <div id="deviceReadSummary" class="summary-grid">
+            <div class="empty-state">Tepsi okuma sonrası form sayısı ve işaret özeti burada görünür.</div>
+          </div>
+          <div>
+            <h3>Form bazlı cihaz özeti</h3>
+            <div id="deviceSheetTableWrap" class="table-wrap empty-state">Henüz cihaz okuması yapılmadı.</div>
+          </div>
+        </section>
+
+        <div class="hint-card" id="importHintCard">
+          <h3>Dosya ile içe aktaracaksan</h3>
+          <p>
+            <strong>Kimlik alanı:</strong> <code>student_id</code> veya <code>ogrenci_no</code><br>
+            <strong>Kitapçık alanı:</strong> <code>booklet_code</code> veya <code>kitapcik</code><br>
+            <strong>Soru sütunları:</strong> <code>Q1, Q2, ...</code> ya da <code>S1, S2, ...</code>
+          </p>
+          <p id="dynamicImportHint" class="muted-copy"></p>
+        </div>
+
+        <button id="runImportBtn" class="primary-button wide-button" type="button">Seçili dosyayı oku ve analizi göster</button>
+      </section>
+
+      <section class="panel analytics-panel">
+        <div class="panel-head">
+          <div>
+            <p class="section-kicker">Sonuçlar</p>
+            <h2>Son içe aktarma özeti</h2>
+          </div>
+          <div class="panel-actions">
+            <button id="exportCsvBtn" class="secondary-button" type="button">CSV</button>
+            <button id="exportXlsxBtn" class="secondary-button" type="button">Excel</button>
+            <button id="exportTxtBtn" class="secondary-button" type="button">TXT</button>
+            <button id="exportPdfBtn" class="secondary-button" type="button">PDF</button>
+            <button id="exportJsonBtn" class="ghost-button" type="button">JSON</button>
+          </div>
+        </div>
+
+        <div id="summaryCards" class="summary-grid"></div>
+
+        <div>
+          <h3>Rapor metodolojisi ve akademik yorum</h3>
+          <div id="reportMethodologyWrap" class="table-wrap empty-state">Henüz içe aktarma yapılmadı.</div>
+        </div>
+
+        <div>
+          <h3>Ölçme değerlendirme uyarıları</h3>
+          <div id="assessmentHighlights" class="summary-grid empty-state">Henüz içe aktarma yapılmadı.</div>
+        </div>
+
+        <div class="analytics-columns">
+          <div>
+            <h3>Kitapçık özeti</h3>
+            <div id="bookletTableWrap" class="table-wrap empty-state">Henüz içe aktarma yapılmadı.</div>
+          </div>
+          <div>
+            <h3>Grup özeti</h3>
+            <div id="groupTableWrap" class="table-wrap empty-state">Henüz içe aktarma yapılmadı.</div>
+          </div>
+        </div>
+
+        <div>
+          <h3>Soru bazlı dağılım</h3>
+          <div id="questionTableWrap" class="table-wrap empty-state">Henüz içe aktarma yapılmadı.</div>
+        </div>
+
+        <div>
+          <h3>Sorulara şıklara göre verilen cevapların dağılımı</h3>
+          <div id="questionChoiceTableWrap" class="table-wrap empty-state">Henüz içe aktarma yapılmadı.</div>
+        </div>
+
+        <div>
+          <h3>Öğrenci önizlemi</h3>
+          <div id="studentTableWrap" class="table-wrap empty-state">Henüz içe aktarma yapılmadı.</div>
+        </div>
+
+        <div>
+          <h3>Öğrenci cevap matrisi</h3>
+          <div id="studentAnswerMatrixWrap" class="table-wrap empty-state">Henüz içe aktarma yapılmadı.</div>
+        </div>
+
+        <div>
+          <h3>Son oturumlar</h3>
+          <div id="recentSessions" class="session-list empty-state">Bu sınav için oturum yok.</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <template id="questionCardTemplate">
+    <article class="question-card">
+      <div class="question-card-head">
+        <strong class="question-title"></strong>
+        <button class="ghost-button remove-question-btn" type="button">Sil</button>
+      </div>
+      <div class="question-core-grid">
+        <label>
+          <span>Kanonik no</span>
+          <input data-field="canonical_no" type="number" min="1">
+        </label>
+        <label>
+          <span>Grup etiketi</span>
+          <input data-field="group_label" type="text" placeholder="Matematik, Fen, Türkçe">
+        </label>
+        <label>
+          <span>Ağırlık</span>
+          <input data-field="weight" type="number" min="0.25" step="0.25">
+        </label>
+      </div>
+      <div class="booklet-grid"></div>
+    </article>
+  </template>
+
+  <script src="/static/js/app.js?v=20260413c" type="module"></script>
+</body>
+</html>
