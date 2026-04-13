@@ -288,7 +288,7 @@ def test_decode_sheet_extracts_auxiliary_identity_fields_from_named_regions() ->
         value="VELI",
         pattern="".join(named_regions["student_surname"]["choices"]),
     )
-    mark_vertical_field(matrix, start_row=23, start_column=31, value="12", pattern="0123456789", reverse_columns=True)
+    mark_vertical_field(matrix, start_row=23, start_column=31, value="12", pattern="0123456789")
     mark_vertical_field(matrix, start_row=23, start_column=34, value="A", pattern="ABCDEFGHIJ")
 
     decoded = decode_sheet(
@@ -302,6 +302,69 @@ def test_decode_sheet_extracts_auxiliary_identity_fields_from_named_regions() ->
     assert decoded["decoded_fields"]["student_surname"] == "VELI"
     assert decoded["decoded_fields"]["student_full_name"] == "ALI VELI"
     assert decoded["decoded_fields"]["classroom"] == "12A"
+
+
+def test_decode_sheet_extracts_exam_code_and_exam_date_from_virtual_right_panel_regions() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    template = parse_form_template(project_root, "varsayilan")
+    named_regions = get_named_field_regions(template)
+    matrix = build_matrix("ABCDE", booklet_code="A")
+
+    mark_vertical_field(
+        matrix,
+        start_row=named_regions["exam_code_prefix"]["start_row"],
+        start_column=named_regions["exam_code_prefix"]["start_column"],
+        value="A",
+        pattern="".join(named_regions["exam_code_prefix"]["choices"]),
+    )
+    mark_vertical_field(
+        matrix,
+        start_row=named_regions["exam_code_number"]["start_row"],
+        start_column=named_regions["exam_code_number"]["start_column"],
+        value="001",
+        pattern="".join(named_regions["exam_code_number"]["choices"]),
+    )
+    mark_vertical_field(
+        matrix,
+        start_row=named_regions["exam_date_day"]["start_row"],
+        start_column=named_regions["exam_date_day"]["start_column"],
+        value="11",
+        pattern="".join(named_regions["exam_date_day"]["choices"]),
+    )
+    mark_vertical_field(
+        matrix,
+        start_row=named_regions["exam_date_month"]["start_row"],
+        start_column=named_regions["exam_date_month"]["start_column"],
+        value="01",
+        pattern="".join(named_regions["exam_date_month"]["choices"]),
+    )
+    mark_vertical_field(
+        matrix,
+        start_row=named_regions["exam_date_year"]["start_row"],
+        start_column=named_regions["exam_date_year"]["start_column"],
+        value="1990",
+        pattern="".join(named_regions["exam_date_year"]["choices"]),
+    )
+
+    decoded = decode_sheet(
+        {"sheet_no": 1, "front_matrix": matrix},
+        template,
+        {"booklet_codes": ["A"]},
+        threshold=12,
+    )
+
+    assert decoded["decoded_fields"]["exam_code"] == "A001"
+    assert decoded["decoded_fields"]["exam_date"] == "11.01.1990"
+
+
+def test_default_template_maps_surname_block_before_name_block() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    template = parse_form_template(project_root, "varsayilan")
+
+    named_regions = get_named_field_regions(template)
+
+    assert named_regions["student_surname"]["start_column"] == 6
+    assert named_regions["student_name"]["start_column"] == 19
 
 
 def test_decode_sheet_preserves_turkish_characters_in_named_regions() -> None:

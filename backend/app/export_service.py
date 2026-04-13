@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from datetime import datetime
 import html
 import io
 import json
@@ -25,6 +26,9 @@ WINDOWS_FONT_CANDIDATES = [
 ]
 SECTION_FILL = PatternFill(fill_type="solid", fgColor="D9E8FF")
 HEADER_FILL = PatternFill(fill_type="solid", fgColor="EEF4FF")
+LTR_MARK = "\u200e"
+LTR_SENSITIVE_COLUMNS = {"Sinif", "Form kodu", "Form tarihi"}
+LTR_SENSITIVE_SUMMARY_LABELS = {"Sistem sinav kodu"}
 
 
 def resolve_session(exam: dict[str, Any], session_id: str) -> dict[str, Any]:
@@ -51,6 +55,37 @@ def stringify(value: Any) -> str:
     if isinstance(value, dict):
         return " | ".join(f"{key}: {stringify(item)}" for key, item in value.items())
     return str(value)
+
+
+def format_export_datetime(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return text
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone()
+    return parsed.strftime("%d.%m.%Y %H:%M")
+
+
+def stringify_export_value(section: dict[str, Any], row: list[Any], column_index: int) -> str:
+    value = row[column_index] if column_index < len(row) else ""
+    text = stringify(value)
+    if not text:
+        return ""
+
+    column_name = section["columns"][column_index] if column_index < len(section["columns"]) else ""
+    summary_label = stringify(row[0]) if row else ""
+    should_force_ltr = column_name in LTR_SENSITIVE_COLUMNS or (
+        section.get("title") == "Genel Ozet"
+        and column_name == "Deger"
+        and summary_label in LTR_SENSITIVE_SUMMARY_LABELS
+    )
+    if should_force_ltr and not text.startswith(LTR_MARK):
+        return f"{LTR_MARK}{text}"
+    return text
 
 
 def build_section(title: str, columns: list[str], rows: list[list[Any]]) -> dict[str, Any]:
@@ -123,9 +158,10 @@ def build_report_sections(
             [
                 ["Sistem sinav kodu", exam.get("exam_code", "")],
                 ["Sinav basligi", exam.get("title", "")],
-                ["Oturum", session.get("session_id", "")],
-                ["Olusturma", session.get("created_at", "")],
-                ["Kaynak dosya", session.get("source_file", "")],
+                ["Sinav yili", exam.get("exam_year", "")],
+                ["Donem", exam.get("exam_term", "")],
+                ["Sinav turu", exam.get("exam_type", "")],
+                ["Olusturma", format_export_datetime(session.get("created_at", ""))],
                 ["Import formati", session.get("import_format", "")],
                 ["Net kurali", net_policy.get("label") or summary.get("net_policy_label") or "Belirtilmedi"],
                 ["Ogrenci sayisi", summary.get("student_count", "")],
@@ -402,7 +438,6 @@ def build_report_sections(
                 "Sinif sira",
                 "Puan",
                 "Yuzde",
-                "Cevap ozeti",
             ],
             [
                 [
@@ -423,7 +458,6 @@ def build_report_sections(
                     row.get("class_rank", ""),
                     row.get("score", ""),
                     row.get("weighted_percent", ""),
-                    row.get("response_summary", ""),
                 ]
                 for row in student_rows
             ],
@@ -475,7 +509,7 @@ def build_csv_bytes(exam: dict[str, Any], session: dict[str, Any]) -> bytes:
         writer.writerow(["Rapor Bolumu", section["title"]])
         writer.writerow(section["columns"])
         for row in section["rows"]:
-            writer.writerow([stringify(value) for value in row])
+            writer.writerow([stringify_export_value(section, row, index) for index in range(len(section["columns"]))])
         writer.writerow([])
     return buffer.getvalue().encode("utf-8-sig")
 
@@ -486,6 +520,9 @@ def build_json_bytes(exam: dict[str, Any], session: dict[str, Any]) -> bytes:
         "exam": {
             "exam_code": exam.get("exam_code"),
             "title": exam.get("title"),
+            "exam_year": exam.get("exam_year", ""),
+            "exam_term": exam.get("exam_term", ""),
+            "exam_type": exam.get("exam_type", ""),
             "booklet_codes": exam.get("booklet_codes", []),
             "question_count": len(exam.get("questions", [])),
         },
@@ -503,7 +540,10 @@ def build_json_bytes(exam: dict[str, Any], session: dict[str, Any]) -> bytes:
 
 
 def render_text_table(section: dict[str, Any]) -> str:
-    rows = [[stringify(value) for value in row] for row in section["rows"]]
+    rows = [
+        [stringify_export_value(section, row, index) for index in range(len(section["columns"]))]
+        for row in section["rows"]
+    ]
     headers = [stringify(value) for value in section["columns"]]
     widths = [len(header) for header in headers]
     for row in rows:
@@ -546,7 +586,7 @@ def write_section_to_sheet(sheet, section: dict[str, Any]) -> None:
         cell.font = Font(bold=True)
         cell.fill = HEADER_FILL
     for row in section["rows"]:
-        sheet.append([stringify(value) for value in row])
+        sheet.append([stringify_export_value(section, row, index) for index in range(len(section["columns"]))])
     sheet.freeze_panes = "A3"
     autosize_sheet(sheet)
 
@@ -629,7 +669,10 @@ def make_pdf_table(section: dict[str, Any], font_name: str, available_width: flo
 
     data = [
         [build_pdf_paragraph(value, header_style) for value in section["columns"]],
-        *[[build_pdf_paragraph(value, body_style) for value in row] for row in section["rows"]],
+        *[
+            [build_pdf_paragraph(stringify_export_value(section, row, index), body_style) for index in range(len(section["columns"]))]
+            for row in section["rows"]
+        ],
     ]
     table = Table(data, repeatRows=1, colWidths=compute_pdf_column_widths(section, available_width), splitByRow=1)
     table.setStyle(
@@ -662,11 +705,6 @@ def build_pdf_bytes(exam: dict[str, Any], session: dict[str, Any]) -> bytes:
 
     story = [
         Paragraph(f"{stringify(exam.get('exam_code'))} - {stringify(exam.get('title'))}", styles["Heading1"]),
-        Spacer(1, 8),
-        Paragraph(
-            f"Oturum: {stringify(session.get('session_id'))} | Olusturma: {stringify(session.get('created_at'))}",
-            styles["Normal"],
-        ),
         Spacer(1, 12),
     ]
 

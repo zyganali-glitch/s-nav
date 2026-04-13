@@ -24,6 +24,7 @@ TURKISH_ALPHABET_FULL = "ABCÇDEFGĞHIİJKLMNOÖPQRSŞTUÜVWXYZ"
 TURKISH_ALPHABET_COMPACT = "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ"
 REPLACEMENT_CHAR = "�"
 TEXT_FIELD_NAMES = {"student_name", "student_surname"}
+AUTO_REVERSE_FIELD_NAMES = TEXT_FIELD_NAMES
 
 EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
     "varsayilan": {
@@ -54,7 +55,7 @@ EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
                 "end_column": 33,
                 "axis": "D",
                 "normalized_choices": "0123456789",
-                "reverse_columns": True,
+                "reverse_columns": False,
             },
             {
                 "name": "class_section",
@@ -66,7 +67,57 @@ EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
                 "normalized_choices": "ABCDEFGHIJ",
             },
             {
-                "name": "student_name",
+                "name": "exam_code_prefix",
+                "start_row": 46,
+                "end_row": 55,
+                "start_column": 45,
+                "end_column": 45,
+                "axis": "D",
+                "normalized_choices": "ABCDEFGHIJ",
+                "virtual": True,
+            },
+            {
+                "name": "exam_code_number",
+                "start_row": 46,
+                "end_row": 55,
+                "start_column": 42,
+                "end_column": 44,
+                "axis": "D",
+                "normalized_choices": "0123456789",
+                "virtual": True,
+            },
+            {
+                "name": "exam_date_day",
+                "start_row": 46,
+                "end_row": 55,
+                "start_column": 38,
+                "end_column": 39,
+                "axis": "D",
+                "normalized_choices": "0123456789",
+                "virtual": True,
+            },
+            {
+                "name": "exam_date_month",
+                "start_row": 46,
+                "end_row": 55,
+                "start_column": 36,
+                "end_column": 37,
+                "axis": "D",
+                "normalized_choices": "0123456789",
+                "virtual": True,
+            },
+            {
+                "name": "exam_date_year",
+                "start_row": 46,
+                "end_row": 55,
+                "start_column": 32,
+                "end_column": 35,
+                "axis": "D",
+                "normalized_choices": "0123456789",
+                "virtual": True,
+            },
+            {
+                "name": "student_surname",
                 "start_row": 2,
                 "end_row": 33,
                 "start_column": 6,
@@ -74,7 +125,7 @@ EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
                 "axis": "D",
             },
             {
-                "name": "student_surname",
+                "name": "student_name",
                 "start_row": 2,
                 "end_row": 33,
                 "start_column": 19,
@@ -149,7 +200,7 @@ EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
                 "end_column": 33,
                 "axis": "D",
                 "normalized_choices": "0123456789",
-                "reverse_columns": True,
+                "reverse_columns": False,
             },
             {
                 "name": "class_section",
@@ -161,7 +212,57 @@ EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
                 "normalized_choices": "ABCDEFGHIJ",
             },
             {
-                "name": "student_name",
+                "name": "exam_code_prefix",
+                "start_row": 46,
+                "end_row": 55,
+                "start_column": 45,
+                "end_column": 45,
+                "axis": "D",
+                "normalized_choices": "ABCDEFGHIJ",
+                "virtual": True,
+            },
+            {
+                "name": "exam_code_number",
+                "start_row": 46,
+                "end_row": 55,
+                "start_column": 42,
+                "end_column": 44,
+                "axis": "D",
+                "normalized_choices": "0123456789",
+                "virtual": True,
+            },
+            {
+                "name": "exam_date_day",
+                "start_row": 46,
+                "end_row": 55,
+                "start_column": 38,
+                "end_column": 39,
+                "axis": "D",
+                "normalized_choices": "0123456789",
+                "virtual": True,
+            },
+            {
+                "name": "exam_date_month",
+                "start_row": 46,
+                "end_row": 55,
+                "start_column": 36,
+                "end_column": 37,
+                "axis": "D",
+                "normalized_choices": "0123456789",
+                "virtual": True,
+            },
+            {
+                "name": "exam_date_year",
+                "start_row": 46,
+                "end_row": 55,
+                "start_column": 32,
+                "end_column": 35,
+                "axis": "D",
+                "normalized_choices": "0123456789",
+                "virtual": True,
+            },
+            {
+                "name": "student_surname",
                 "start_row": 2,
                 "end_row": 33,
                 "start_column": 6,
@@ -169,7 +270,7 @@ EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
                 "axis": "D",
             },
             {
-                "name": "student_surname",
+                "name": "student_name",
                 "start_row": 2,
                 "end_row": 33,
                 "start_column": 19,
@@ -244,7 +345,7 @@ EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
                 "end_column": 33,
                 "axis": "D",
                 "normalized_choices": "0123456789",
-                "reverse_columns": True,
+                "reverse_columns": False,
             },
             {
                 "name": "class_section",
@@ -256,7 +357,57 @@ EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
                 "normalized_choices": "ABCDEFGHIJ",
             },
             {
-                "name": "student_name",
+                "name": "exam_code_prefix",
+                "start_row": 44,
+                "end_row": 53,
+                "start_column": 45,
+                "end_column": 45,
+                "axis": "D",
+                "normalized_choices": "ABCDEFGHIJ",
+                "virtual": True,
+            },
+            {
+                "name": "exam_code_number",
+                "start_row": 44,
+                "end_row": 53,
+                "start_column": 42,
+                "end_column": 44,
+                "axis": "D",
+                "normalized_choices": "0123456789",
+                "virtual": True,
+            },
+            {
+                "name": "exam_date_day",
+                "start_row": 44,
+                "end_row": 53,
+                "start_column": 38,
+                "end_column": 39,
+                "axis": "D",
+                "normalized_choices": "0123456789",
+                "virtual": True,
+            },
+            {
+                "name": "exam_date_month",
+                "start_row": 44,
+                "end_row": 53,
+                "start_column": 36,
+                "end_column": 37,
+                "axis": "D",
+                "normalized_choices": "0123456789",
+                "virtual": True,
+            },
+            {
+                "name": "exam_date_year",
+                "start_row": 44,
+                "end_row": 53,
+                "start_column": 32,
+                "end_column": 35,
+                "axis": "D",
+                "normalized_choices": "0123456789",
+                "virtual": True,
+            },
+            {
+                "name": "student_surname",
                 "start_row": 2,
                 "end_row": 33,
                 "start_column": 6,
@@ -264,7 +415,7 @@ EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
                 "axis": "D",
             },
             {
-                "name": "student_surname",
+                "name": "student_name",
                 "start_row": 2,
                 "end_row": 33,
                 "start_column": 19,
@@ -532,11 +683,38 @@ def normalize_decoded_text(value: str) -> str:
 
 
 def normalize_decoded_field_value(field_name: str, value: str) -> str:
-    if field_name in {"student_number", "class_number", "exam_date"}:
+    if field_name in {"student_number", "class_number", "exam_date", "exam_date_day", "exam_date_month", "exam_date_year", "exam_code_number"}:
         return "".join(character for character in str(value or "") if character.isdigit())
-    if field_name in TEXT_FIELD_NAMES | {"class_section", "student_full_name", "classroom", "exam_code"}:
+    if field_name in TEXT_FIELD_NAMES | {"class_section", "student_full_name", "classroom", "exam_code", "exam_code_prefix"}:
         return normalize_decoded_text(value)
     return normalize_token(value)
+
+
+def format_exam_date_value(value: str) -> str:
+    digits = "".join(character for character in str(value or "") if character.isdigit())
+    if len(digits) == 8:
+        return f"{digits[:2]}.{digits[2:4]}.{digits[4:]}"
+    return digits
+
+
+def normalize_exam_date_parts(day: str, month: str, year: str) -> str:
+    normalized_day = "".join(character for character in str(day or "") if character.isdigit())[:2].zfill(2)
+    normalized_month = "".join(character for character in str(month or "") if character.isdigit())[:2].zfill(2)
+    normalized_year = "".join(character for character in str(year or "") if character.isdigit())[:4].zfill(4)
+    return f"{normalized_day}.{normalized_month}.{normalized_year}"
+
+
+def is_plausible_exam_date(day: str, month: str, year: str) -> bool:
+    day_value = int(day)
+    month_value = int(month)
+    year_value = int(year)
+    if not 1 <= day_value <= 31:
+        return False
+    if not 1 <= month_value <= 12:
+        return False
+    if not 1900 <= year_value <= 2100:
+        return False
+    return True
 
 
 def decode_single_with_soft_threshold(
@@ -691,6 +869,32 @@ def find_template_region(
     return None
 
 
+def build_virtual_template_region(template: dict[str, Any], spec: dict[str, Any], index_seed: int) -> dict[str, Any] | None:
+    row_count = template.get("rows") or 0
+    column_count = template.get("columns") or 0
+    start_row = int(spec["start_row"])
+    end_row = int(spec["end_row"])
+    start_column = int(spec["start_column"])
+    end_column = int(spec["end_column"])
+    if start_row < 1 or end_row > row_count or start_column < 1 or end_column > column_count:
+        return None
+    pattern = str(spec.get("pattern") or spec.get("normalized_choices") or "")
+    choices = [character for character in pattern if character.strip()]
+    return {
+        "index": index_seed,
+        "start_row": start_row,
+        "end_row": end_row,
+        "start_column": start_column,
+        "end_column": end_column,
+        "row_count": end_row - start_row + 1,
+        "column_count": end_column - start_column + 1,
+        "axis": str(spec.get("axis") or "D").upper(),
+        "pattern": pattern,
+        "region_type": str(spec.get("region_type") or "T").upper(),
+        "choices": choices,
+    }
+
+
 def get_named_field_regions(template: dict[str, Any]) -> dict[str, dict[str, Any]]:
     explicit_regions = resolve_coordinate_source_regions(template, "named_fields")
     named_regions: dict[str, dict[str, Any]] = {}
@@ -722,7 +926,7 @@ def get_named_field_regions(template: dict[str, Any]) -> dict[str, dict[str, Any
     )
     if class_number_region:
         class_number_region = dict(class_number_region)
-        class_number_region["reverse_columns"] = True
+        class_number_region["reverse_columns"] = False
         named_regions.setdefault("class_number", class_number_region)
 
     class_section_region = find_template_region(
@@ -738,10 +942,10 @@ def get_named_field_regions(template: dict[str, Any]) -> dict[str, dict[str, Any
         named_regions.setdefault("class_section", dict(class_section_region))
 
     for field_name, end_row, normalized_choices, start_column, end_column in (
-        ("student_name", 33, None, 6, 15),
-        ("student_surname", 33, None, 19, 28),
-        ("student_name", 30, None, 6, 15),
-        ("student_surname", 30, None, 19, 28),
+        ("student_surname", 33, None, 6, 15),
+        ("student_name", 33, None, 19, 28),
+        ("student_surname", 30, None, 6, 15),
+        ("student_name", 30, None, 19, 28),
     ):
         if field_name in named_regions:
             continue
@@ -780,12 +984,15 @@ def resolve_coordinate_source_region(template: dict[str, Any], key: str) -> dict
         normalized_choices=spec.get("normalized_choices"),
     )
     if not region:
-        return None
+        if not spec.get("virtual"):
+            return None
+        region = build_virtual_template_region(template, spec, 9000)
+        if not region:
+            return None
     annotated_region = dict(region)
     annotated_region["semantic_name"] = spec.get("name", key)
     annotated_region["reverse_columns"] = bool(spec.get("reverse_columns")) or annotated_region["semantic_name"] in {
         "student_number",
-        "class_number",
     }
     return annotated_region
 
@@ -793,7 +1000,7 @@ def resolve_coordinate_source_region(template: dict[str, Any], key: str) -> dict
 def resolve_coordinate_source_regions(template: dict[str, Any], key: str) -> list[dict[str, Any]]:
     specs = get_template_coordinate_source(template).get(key) or []
     regions: list[dict[str, Any]] = []
-    for spec in specs:
+    for index, spec in enumerate(specs, start=1):
         region = find_template_region(
             template,
             start_row=spec["start_row"],
@@ -804,12 +1011,15 @@ def resolve_coordinate_source_regions(template: dict[str, Any], key: str) -> lis
             normalized_choices=spec.get("normalized_choices"),
         )
         if not region:
-            continue
+            if not spec.get("virtual"):
+                continue
+            region = build_virtual_template_region(template, spec, 9000 + index)
+            if not region:
+                continue
         annotated_region = dict(region)
         annotated_region["semantic_name"] = spec.get("name", key)
         annotated_region["reverse_columns"] = bool(spec.get("reverse_columns")) or annotated_region["semantic_name"] in {
             "student_number",
-            "class_number",
         }
         regions.append(annotated_region)
     return regions
@@ -891,7 +1101,18 @@ def decode_vertical_region_once(
 
 def get_named_field_row_shift_candidates(region: dict[str, Any]) -> list[int]:
     semantic_name = str(region.get("semantic_name") or "")
-    if semantic_name in {"student_name", "student_surname", "class_number", "class_section", "student_number"}:
+    if semantic_name in {
+        "student_name",
+        "student_surname",
+        "class_number",
+        "class_section",
+        "student_number",
+        "exam_code_prefix",
+        "exam_code_number",
+        "exam_date_day",
+        "exam_date_month",
+        "exam_date_year",
+    }:
         return [0, 1, -1, 2]
     return [0]
 
@@ -902,6 +1123,10 @@ def get_named_field_shift_group(region: dict[str, Any]) -> str:
         return "student_identity_text"
     if semantic_name in {"class_number", "class_section"}:
         return "classroom"
+    if semantic_name in {"exam_code_prefix", "exam_code_number"}:
+        return "exam_code"
+    if semantic_name in {"exam_date_day", "exam_date_month", "exam_date_year"}:
+        return "exam_date"
     return semantic_name or str(region["index"])
 
 
@@ -911,10 +1136,11 @@ def build_vertical_region_candidates(
     threshold: int,
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
-    reverse_options = [bool(region.get("reverse_columns"))]
     semantic_name = str(region.get("semantic_name") or "")
-    if semantic_name in TEXT_FIELD_NAMES and reverse_options == [False]:
-        reverse_options.append(True)
+    default_reverse_columns = bool(region.get("reverse_columns"))
+    reverse_options = [default_reverse_columns]
+    if semantic_name in AUTO_REVERSE_FIELD_NAMES:
+        reverse_options = list(dict.fromkeys([default_reverse_columns, not default_reverse_columns]))
 
     for reverse_columns in reverse_options:
         candidate_region = dict(region)
@@ -960,7 +1186,7 @@ def choose_preferred_field_variant(candidates_by_region: dict[str, list[dict[str
 
     return max(
         variant_support.items(),
-        key=lambda item: (item[1], item[0][0] == 0, -abs(item[0][0]), item[0][1]),
+        key=lambda item: (item[1], item[0][0] == 0, -abs(item[0][0]), item[0][1] is False),
     )[0]
 
 
@@ -979,7 +1205,8 @@ def decode_vertical_region(
             candidate["row_shift"] == preferred_shift,
             candidate.get("reverse_columns") == preferred_reverse_columns,
             candidate["row_shift"] == 0,
-            candidate.get("reverse_columns") is True,
+            candidate.get("reverse_columns") == bool(region.get("reverse_columns")),
+            candidate.get("reverse_columns") is False,
             -abs(candidate["row_shift"]),
         ),
     )
@@ -1044,6 +1271,33 @@ def decode_auxiliary_fields(
     class_section = decoded_fields.get("class_section") or ""
     if class_number or class_section:
         decoded_fields["classroom"] = f"{class_number}{class_section}".strip()
+
+    exam_code_prefix = decoded_fields.get("exam_code_prefix") or ""
+    exam_code_number = decoded_fields.get("exam_code_number") or ""
+    if exam_code_prefix and len(exam_code_number) >= 1:
+        decoded_fields["exam_code"] = f"{exam_code_prefix}{exam_code_number.zfill(3)}"
+    elif exam_code_number and len(exam_code_number) >= 4:
+        decoded_fields["exam_code"] = exam_code_number
+    elif decoded_fields.get("exam_code") and len(decoded_fields["exam_code"]) < 4:
+        decoded_fields.pop("exam_code", None)
+
+    exam_date_parts = [
+        decoded_fields.get("exam_date_day") or "",
+        decoded_fields.get("exam_date_month") or "",
+        decoded_fields.get("exam_date_year") or "",
+    ]
+    if any(exam_date_parts):
+        if (
+            len(exam_date_parts[0]) == 2
+            and len(exam_date_parts[1]) == 2
+            and len(exam_date_parts[2]) == 4
+            and is_plausible_exam_date(*exam_date_parts)
+        ):
+            decoded_fields["exam_date"] = normalize_exam_date_parts(*exam_date_parts)
+        else:
+            decoded_fields.pop("exam_date", None)
+    elif decoded_fields.get("exam_date"):
+        decoded_fields["exam_date"] = format_exam_date_value(decoded_fields["exam_date"])
 
     return decoded_fields, warnings
 

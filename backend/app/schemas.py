@@ -21,6 +21,9 @@ class ExamUpsertRequest(BaseModel):
     exam_code: str = Field(min_length=1)
     title: str = Field(min_length=1)
     description: str = ""
+    exam_year: str = ""
+    exam_term: str = ""
+    exam_type: str = ""
     form_template_id: str = Field(default="varsayilan", min_length=1)
     booklet_codes: list[str] = Field(min_length=1)
     questions: list[QuestionInput] = Field(default_factory=list)

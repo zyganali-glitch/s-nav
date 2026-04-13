@@ -66,6 +66,9 @@ const state = {
     exam_code: "",
     title: "",
     description: "",
+    exam_year: "",
+    exam_term: "",
+    exam_type: "",
     form_template_id: "varsayilan",
     booklet_codes: ["A"],
     questions: [],
@@ -84,6 +87,9 @@ const dom = {
   saveExamBtn: document.getElementById("saveExamBtn"),
   examCodeInput: document.getElementById("examCodeInput"),
   examTitleInput: document.getElementById("examTitleInput"),
+  examYearInput: document.getElementById("examYearInput"),
+  examTermInput: document.getElementById("examTermInput"),
+  examTypeInput: document.getElementById("examTypeInput"),
   examDescriptionInput: document.getElementById("examDescriptionInput"),
   bookletCodesInput: document.getElementById("bookletCodesInput"),
   formTemplateSelect: document.getElementById("formTemplateSelect"),
@@ -197,6 +203,20 @@ function formatCellValue(value) {
   return String(value);
 }
 
+function forceLtrText(value) {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+  return `\u200e${String(value)}`;
+}
+
+function formatExamMetadata(exam) {
+  const parts = [exam?.exam_year, exam?.exam_term, exam?.exam_type]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  return parts.join(" · ") || "Metadata yok";
+}
+
 function createDefaultQuestion(index, bookletCodes = state.form.booklet_codes) {
   const bookletMappings = {};
   bookletCodes.forEach((booklet) => {
@@ -215,6 +235,9 @@ function createStarterExamPayload() {
     exam_code: "DENEME01",
     title: "Nisan Denemesi",
     description: "Örnek iki kitapçıklı deneme sınavı",
+    exam_year: "2026",
+    exam_term: "Bahar",
+    exam_type: "Deneme",
     form_template_id: "varsayilan",
     booklet_codes: ["A", "B"],
     questions: [
@@ -940,6 +963,7 @@ function renderLibrary() {
             <span>${escapeHtml((exam.booklet_codes || []).join(", ") || "Tek kitapçık")}</span>
             <span>${escapeHtml(exam.form_template_name || "Varsayılan")}</span>
             <span>${escapeHtml(exam.has_answer_key ? "Anahtar hazır" : "Anahtar yok")}</span>
+            <span>${escapeHtml(formatExamMetadata(exam))}</span>
           </div>
         </article>
       `;
@@ -1349,10 +1373,10 @@ function renderAnalytics(session) {
     [
       { label: "Öğrenci", key: "student_id" },
       { label: "Ad soyad", render: (row) => row.student_full_name || `${row.student_name || ""} ${row.student_surname || ""}`.trim() || "—" },
-      { label: "Sınıf", render: (row) => row.classroom || row.class_number || "—" },
+      { label: "Sınıf", render: (row) => forceLtrText(row.classroom || row.class_number || "") },
       { label: "Kitapçık", key: "booklet_code" },
-      { label: "Form kodu", render: (row) => row.scanned_exam_code || "—" },
-      { label: "Form tarihi", render: (row) => row.scanned_exam_date || row.decoded_fields?.exam_date || "—" },
+      { label: "Form kodu", render: (row) => forceLtrText(row.scanned_exam_code || "") },
+      { label: "Form tarihi", render: (row) => forceLtrText(row.scanned_exam_date || row.decoded_fields?.exam_date || "") },
       { label: "Puan", render: (row) => formatNumber(row.score) },
       { label: "Yüzde", render: (row) => formatPercent(row.weighted_percent) },
       { label: "Doğru", render: (row) => formatNumber(row.correct_count) },
@@ -1362,7 +1386,6 @@ function renderAnalytics(session) {
       { label: "Toplam", render: (row) => formatNumber(row.total_questions) },
       { label: "Genel sıra", render: (row) => formatNumber(row.exam_rank) },
       { label: "Sınıf sıra", render: (row) => formatNumber(row.class_rank) },
-      { label: "Cevap özeti", render: (row) => row.response_summary || "—" },
     ],
     session?.student_results || session?.student_preview || [],
     "Öğrenci önizlemi yok."
@@ -1382,6 +1405,9 @@ function fillForm(examDetail) {
   state.form.exam_code = exam?.exam_code || "";
   state.form.title = exam?.title || "";
   state.form.description = exam?.description || "";
+  state.form.exam_year = exam?.exam_year || "";
+  state.form.exam_term = exam?.exam_term || "";
+  state.form.exam_type = exam?.exam_type || "";
   state.form.form_template_id = exam?.form_template_id || defaultTemplate.id;
   state.form.booklet_codes = exam?.booklet_codes?.length ? [...exam.booklet_codes] : ["A"];
   state.form.questions = exam?.questions?.length
@@ -1395,6 +1421,9 @@ function fillForm(examDetail) {
 
   dom.examCodeInput.value = state.form.exam_code;
   dom.examTitleInput.value = state.form.title;
+  dom.examYearInput.value = state.form.exam_year;
+  dom.examTermInput.value = state.form.exam_term;
+  dom.examTypeInput.value = state.form.exam_type;
   dom.examDescriptionInput.value = state.form.description;
   dom.bookletCodesInput.value = state.form.booklet_codes.join(", ");
   dom.operatorExamCodeInput.value = state.form.exam_code;
@@ -1438,6 +1467,9 @@ function collectFormPayload() {
     exam_code: normalizeToken(dom.examCodeInput.value),
     title: dom.examTitleInput.value.trim(),
     description: dom.examDescriptionInput.value.trim(),
+    exam_year: dom.examYearInput.value.trim(),
+    exam_term: dom.examTermInput.value.trim(),
+    exam_type: dom.examTypeInput.value.trim(),
     form_template_id: dom.formTemplateSelect.value || getDefaultFormTemplate().id,
     booklet_codes: state.form.booklet_codes,
     questions: state.form.questions.map((question) => ({
@@ -1827,6 +1859,9 @@ function bindEvents() {
   [
     [dom.examCodeInput, "exam_code"],
     [dom.examTitleInput, "title"],
+    [dom.examYearInput, "exam_year"],
+    [dom.examTermInput, "exam_term"],
+    [dom.examTypeInput, "exam_type"],
     [dom.examDescriptionInput, "description"],
   ].forEach(([element, key]) => {
     element.addEventListener("input", () => {

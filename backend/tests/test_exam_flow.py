@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from backend.app.main import create_app
 
@@ -16,6 +16,9 @@ def build_exam_payload() -> dict[str, object]:
         "exam_code": "deneme01",
         "title": "Nisan Denemesi",
         "description": "Iki kitapcikli agirlikli deneme",
+        "exam_year": "2026",
+        "exam_term": "Bahar",
+        "exam_type": "Vize",
         "form_template_id": "varsayilan",
         "booklet_codes": ["A", "B"],
         "questions": [
@@ -47,6 +50,9 @@ def build_single_booklet_exam_payload() -> dict[str, object]:
         "exam_code": "tekkitapcik",
         "title": "Tek Kitapcik Deneme",
         "description": "Sabit genislik TXT import testi",
+        "exam_year": "2026",
+        "exam_term": "Guz",
+        "exam_type": "Quiz",
         "form_template_id": "varsayilan",
         "booklet_codes": ["A"],
         "questions": [
@@ -68,6 +74,9 @@ def build_draft_exam_payload() -> dict[str, object]:
         "exam_code": "taslak01",
         "title": "Taslak Sinav",
         "description": "Cevap anahtari sonradan yüklenecek",
+        "exam_year": "2026",
+        "exam_term": "Bahar",
+        "exam_type": "Final",
         "form_template_id": "varsayilan",
         "booklet_codes": ["A", "B"],
         "questions": [],
@@ -85,6 +94,9 @@ def test_exam_save_and_csv_import_scoring(client: TestClient) -> None:
     assert save_response.status_code == 200
     assert save_response.json()["summary"]["question_count"] == 2
     assert save_response.json()["summary"]["form_template_id"] == "varsayilan"
+    assert save_response.json()["summary"]["exam_year"] == "2026"
+    assert save_response.json()["summary"]["exam_term"] == "Bahar"
+    assert save_response.json()["summary"]["exam_type"] == "Vize"
 
     csv_payload = "student_id,booklet_code,Q1,Q2\n1001,A,A,D\n1002,B,D,A\n1003,B,D,C\n"
     import_response = client.post(
@@ -376,6 +388,76 @@ def test_legacy_session_is_hydrated_for_detail_and_export(tmp_path: Path) -> Non
     assert export_response.status_code == 200
     assert "Sinava Ozel Akademik Yorum" in export_response.text
     assert ",15,2,0,0,2," in export_response.text or ",15.0,2,0,0,2.0," in export_response.text
+
+
+def test_exports_force_ltr_mark_for_classroom_form_code_and_form_date(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "app_state.json")
+    client = TestClient(app)
+
+    client.post("/api/exams", json=build_exam_payload())
+    csv_payload = "student_id,booklet_code,Q1,Q2\n1001,A,A,D\n"
+    import_response = client.post(
+        "/api/exams/DENEME01/imports",
+        files={"file": ("answers.csv", csv_payload, "text/csv")},
+    )
+    assert import_response.status_code == 200
+
+    state_path = tmp_path / "app_state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    session = state["exams"]["DENEME01"]["sessions"][0]
+    for bucket_name in ("student_results", "student_preview"):
+        bucket = session.get(bucket_name) or []
+        if not bucket:
+            continue
+        bucket[0]["classroom"] = "001A"
+        bucket[0]["scanned_exam_code"] = "ANKET01"
+        bucket[0]["scanned_exam_date"] = "13.04.2026"
+    state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    csv_response = client.get("/api/exams/DENEME01/exports/csv?session_id=latest")
+    assert csv_response.status_code == 200
+    assert "\u200e001A" in csv_response.text
+    assert "\u200eANKET01" in csv_response.text
+    assert "\u200e13.04.2026" in csv_response.text
+
+    xlsx_response = client.get("/api/exams/DENEME01/exports/xlsx?session_id=latest")
+    assert xlsx_response.status_code == 200
+    workbook = load_workbook(io.BytesIO(xlsx_response.content), read_only=True)
+    sheet = workbook["Ogrenci Onizlemi"]
+    assert sheet["E3"].value == "\u200e001A"
+    assert sheet["G3"].value == "\u200eANKET01"
+    assert sheet["H3"].value == "\u200e13.04.2026"
+
+
+def test_exports_include_exam_metadata_and_remove_report_noise(client: TestClient) -> None:
+    client.post("/api/exams", json=build_exam_payload())
+    csv_payload = "student_id,booklet_code,Q1,Q2\n1001,A,A,D\n"
+    import_response = client.post(
+        "/api/exams/DENEME01/imports",
+        files={"file": ("answers.csv", csv_payload, "text/csv")},
+    )
+    assert import_response.status_code == 200
+
+    csv_response = client.get("/api/exams/DENEME01/exports/csv?session_id=latest")
+    assert csv_response.status_code == 200
+    assert "Sinav yili,2026" in csv_response.text
+    assert "Donem,Bahar" in csv_response.text
+    assert "Sinav turu,Vize" in csv_response.text
+    assert "Kaynak dosya," not in csv_response.text
+    assert "Olusturma," in csv_response.text
+    assert import_response.json()["session"]["created_at"] not in csv_response.text
+    assert "+00:00" not in csv_response.text
+    assert "Cevap ozeti" not in csv_response.text
+
+    txt_response = client.get("/api/exams/DENEME01/exports/txt?session_id=latest")
+    assert txt_response.status_code == 200
+    assert "Sinav yili" in txt_response.text
+    assert "Donem" in txt_response.text
+    assert "Sinav turu" in txt_response.text
+    assert "Kaynak dosya" not in txt_response.text
+    assert "Olusturma" in txt_response.text
+    assert "+00:00" not in txt_response.text
+    assert "Cevap ozeti" not in txt_response.text
 
 
 @pytest.mark.parametrize(
