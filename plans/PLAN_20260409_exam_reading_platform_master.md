@@ -90,7 +90,7 @@ Kilidi acilan Phase-0 kararlari:
 | MF-03 | Backend domain ve import/puanlama iskeletini kur | TAMAMLANDI |
 | MF-04 | Frontend teacher/operator akisini kur | TAMAMLANDI |
 | MF-05 | Test, smoke ve uygulama baslatma | DEVAM |
-| MF-06 | README canli dokumantasyonunu guncelle ve GitHub snapshot yedegi al | DEVAM |
+| MF-06 | README canli dokumantasyonunu guncelle ve GitHub snapshot yedegi al | TAMAMLANDI |
 
 ---
 
@@ -103,7 +103,7 @@ Kilidi acilan Phase-0 kararlari:
 | REQ-03 | Agirlikli puan ve kitapcik/grup bazli analizler olsun | MVP | DEVAM |
 | REQ-04 | QR olmasin | MVP | TAMAMLANDI |
 | REQ-05 | Yanlis repoda baslayan is bu koke tasinsin | Governance | TAMAMLANDI |
-| REQ-06 | Guncel README hazirlansin ve repo GitHub'a yedeklensin | Governance | DEVAM |
+| REQ-06 | Guncel README hazirlansin ve repo GitHub'a yedeklensin | Governance | TAMAMLANDI |
 
 ---
 
@@ -121,7 +121,7 @@ Kilidi acilan Phase-0 kararlari:
 | F4 | F4.2 | [DISCOVERED] Cok kitapcikli optik cevap anahtari okuma sayisini kitapcik/pending adetle sinirla | TAMAMLANDI | MF-05 | GitHub Copilot | 2026-04-13 | 2026-04-13 | OK | `backend.app.main` icinde device-answer-key path'i explicit limit yoksa toplam/pending kitapcik adedi kadar `max_sheets` uygular; `pytest backend/tests/test_optical_form_flow.py -k "defaults_max_sheets or mixed_booklets_in_single_pass or reads_multiple_booklets_in_single_pass" -q` -> `4 passed`; `pytest backend/tests/test_optical_form_flow.py -q` -> `20 passed` |
 | F4 | F4.3 | [DISCOVERED] Canli operator kabul bosluklarini kapat: canli import, silme, export, decode alanlari ve detayli analiz | DEVAM | MF-05 | GitHub Copilot | 2026-04-13 | - | TODO | Kullanici canli testte `Okunanlari ice aktar` pasifligi, sinav silme eksigi, ogrenci no yon problemi, sinif/ad-soyad decode eksigi, sinav kodu/tarih gorunurlugu ve analiz yetersizligini raporladi |
 | F4 | F4.4 | [DISCOVERED] Ciktilari tam bloklu rapora cevir: kitapcik/grup/soru/ogrenci bloklari, soru-yanit matrisi, sinav geneli sirasi ve secilebilir net kurali | DEVAM | MF-05 | GitHub Copilot | 2026-04-13 | - | PARTIAL | Session modeli agirlik-duyarli deterministic akademik yorum, birlestirilmis metodoloji tablosu ve soru bazli dagilimin altinda ayrica sik-cevap dagilim tablosu ile genisletildi; legacy session hydration artik bu yeni yorum/tablo alanlarini da geriye donuk dolduruyor; PDF export hucreleri sarilabilir paragraf + sayfaya olceklenen kolon genisligi ile yeniden kuruldu; `pytest backend/tests/test_exam_flow.py backend/tests/test_optical_form_flow.py -k "not fixed_width_vendor_txt_is_accepted_for_single_booklet_exam" -q` -> `42 passed, 1 deselected`; localhost `http://127.0.0.1:8141` uzerinde ayakta |
-| F4 | F4.5 | [DISCOVERED] README'yi canli durumla hizala ve GitHub snapshot yedegini al | DEVAM | MF-06 | GitHub Copilot | 2026-04-13 | - | TODO | Mevcut kok README ilk MVP asamasinda kalmis durumda; guncel optik/raporlama/yedekleme akislarini anlatan README yazilip hedef GitHub reposuna push alinacak |
+| F4 | F4.5 | [DISCOVERED] README'yi canli durumla hizala ve GitHub snapshot yedegini al | TAMAMLANDI | MF-06 | GitHub Copilot | 2026-04-13 | 2026-04-13 | OK | Kok README guncel optik, raporlama, persist ve calistirma akislarini anlatacak sekilde yenilendi; workspace git ile baslatilip `https://github.com/zyganali-glitch/s-nav` reposuna `main` dali olarak pushlandi |
 
 ---
 
@@ -136,7 +136,7 @@ Kilidi acilan Phase-0 kararlari:
 | No-UI-Regression Gate | DEVAM | Agirlik-duyarli yorum, birlestirilmis metodoloji tablosu, yeni sik-dagilim tablosu ve PDF satir sarma/kolon olcekleme kod/test tarafinda eklendi; cache-bust varligi `20260413c` ile yukseltildi; guncel localhost instance `http://127.0.0.1:8141` uzerinde hazir, gercek operator kabul turu bekleniyor |
 | I18N-Completeness Gate | PASS | Phase-0 TR-only kilidi dogrultusunda arayuz Turkceye cekildi; karisik dil etiketleri temizlendi |
 | Integrity-Lock Gate | PASS | Header, faz, backlog, task, gate, risk ve handoff ayni editte implementasyon ve test kanitiyle guncellendi |
-| Repo-Snapshot Gate | DEVAM | Workspace halen git ile baslatilmamis durumda; README guncellemesinden sonra hedef `https://github.com/zyganali-glitch/s-nav` reposuna snapshot push denenecek |
+| Repo-Snapshot Gate | PASS | Workspace git ile baslatildi; README ve guncel kaynak snapshot'i `https://github.com/zyganali-glitch/s-nav` reposunda `main` dalina pushlandi |
 | Release/NFR Gate | DEVAM | Gercek saha dosyasi kabul turu bekleniyor |
 
 ---
@@ -154,15 +154,15 @@ Kilidi acilan Phase-0 kararlari:
 | R-07 | Ham cihaz matrisinde bubble olmayan serbest-yazi alanlari (or. tarih/anket kodu) OCR olmadan geri kazanilamayabilir | OPEN | Bubble kodlu alanlari decode et; bubble olmayan alanlarda session/exam metadata ile gorunurluk sagla ve fiziksel format kaniti gelirse OCR/ek helper yolunu ayir |
 | R-08 | Cikti formatlarinda ayni session verisinin farkli tablolarda farkli net/rank hesaplariyla bozulmasi operator guvenini dusurur | OPEN | Net kurali session aninda kilitlenip backend tek kaynaktan rank/net/cevap matrisi uretecek; tum export/UI katmanlari ayni payload'a baglanacak |
 | R-09 | Ad/soyad gibi dikey alanlarda kodlama satirinin ustundeki el yazisi veya bir satir asagidan baslayan kodlama named-field decode'unu bozabilir | OPEN | Named-field decode'a kontrollu satir-ofset toleransi ve testli secici skor ekle; cevap bloklarina dokunma |
-| R-10 | GitHub hedef reposu bos degilse veya kimlik dogrulamasi yoksa snapshot push bloke olabilir | OPEN | README guncellemesinden sonra remote refs ve push sonucu dogrulanacak; gerekiyorsa kullanicidan sadece auth/overwrite karari istenecek |
+| R-10 | GitHub hedef reposu bos degilse veya kimlik dogrulamasi yoksa snapshot push bloke olabilir | MITIGATED | Hedef repo bos/uygun durumda bulundu; yerel root commit ve sonraki parity commit'i `main` dalina basariyla pushlandi |
 
 ---
 
 ## 10) Handoff
 
-- Son tamamlanan mikro-adim: `MF-05 agirlik-duyarli deterministic yorum, soru-sik dagilim tablosu ve PDF hucre sarma/kolon olcekleme eklendi; legacy session hydration bu yeni alanlari da dolduruyor; asset cache-bust 20260413c; localhost 8141'de ayakta`
-- Sonraki mikro-adim: `Kok README'yi guncel urun durumu, calistirma, persist, export ve optik yeteneklerle yenile; sonra yerel snapshot'i hedef GitHub reposuna push ederek harici yedek al`
-- Acik risk/bloke: `Workspace henuz git ile baslatilmamis; hedef repo doluysa veya auth eksikse push akisi bloke olabilir. Bunun disinda legacy sabit-genislik vendor TXT ortalama puan beklentisi (5.5/9.5 farki) halen bilincli olarak kapsam disi; optik sinav kodu/tarih decode'u ve PDF satir sarma davranisinin gercek saha raporlarinda son kabul kaniti henuz alinmadi.`
-- Degisen dosyalar: `README.md`, `plans/PLAN_20260409_exam_reading_platform_master.md`
-- Gate durumu: `Smoke PASS, Binding PASS, Related-Tests PASS, Parity PASS, I18N PASS, Restore-Regression PASS, No-UI-Regression DEVAM, Repo-Snapshot DEVAM, Release/NFR DEVAM.`
-- Checkpoint: `Uygulama tarafi stabil; bu mikro-fazda dokumantasyon vitrini guncellenip harici GitHub snapshot'i alinacak. Sonrasinda tekrar saha kabul turune donulecek.`
+- Son tamamlanan mikro-adim: `MF-06 kok README guncellendi, .gitignore ile snapshot temizlendi, workspace git ile baslatildi ve guncel proje `https://github.com/zyganali-glitch/s-nav` reposuna pushlandi`
+- Sonraki mikro-adim: `Gercek saha kabul turunda PDF sayfa tasmasi, yeni sik dagilim tablosunun okunabilirligi ve agirlik-duyarli yorumun ogretmen beklentisiyle uyumunu dogrula; sonra sinav kodu/tarih matris kanitini ayri topla`
+- Acik risk/bloke: `Legacy sabit-genislik vendor TXT ortalama puan beklentisi (5.5/9.5 farki) halen bilincli olarak kapsam disi; optik sinav kodu/tarih decode'u ve PDF satir sarma davranisinin gercek saha raporlarinda son kabul kaniti henuz alinmadi.`
+- Degisen dosyalar: `README.md`, `.gitignore`, `plans/PLAN_20260409_exam_reading_platform_master.md`
+- Gate durumu: `Smoke PASS, Binding PASS, Related-Tests PASS, Parity PASS, I18N PASS, Restore-Regression PASS, No-UI-Regression DEVAM, Repo-Snapshot PASS, Release/NFR DEVAM.`
+- Checkpoint: `Harici GitHub yedegi alindi. Bundan sonraki is gercek operator kabul turu ve kalan optik/PDF saha risklerinin kapanisidir.`
