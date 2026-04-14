@@ -83,6 +83,37 @@ def build_draft_exam_payload() -> dict[str, object]:
     }
 
 
+def build_definition_workbook(
+    rows: list[list[object]],
+    headers: list[str] | None = None,
+    *,
+    include_intro_sheet: bool = False,
+) -> bytes:
+    workbook = Workbook()
+    sheet = workbook.active
+    if include_intro_sheet:
+        sheet.title = "Kullanim"
+        sheet["A1"] = "Sinav tanim sablonu"
+        sheet["A2"] = "Bu sayfa yalniz kullanim notudur."
+        sheet = workbook.create_sheet("Sablon")
+    else:
+        sheet.title = "Sablon"
+    sheet.append(headers or [
+        "kanonik_no",
+        "grup_etiketi",
+        "agirlik",
+        "A_sira",
+        "A_cevap",
+        "B_sira",
+        "B_cevap",
+    ])
+    for row in rows:
+        sheet.append(row)
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
 @pytest.fixture
 def client(tmp_path: Path) -> TestClient:
     app = create_app(tmp_path / "app_state.json")
@@ -165,6 +196,11 @@ def test_fixed_width_vendor_txt_is_accepted_for_single_booklet_exam(client: Test
     assert session["import_format"] == "vendor-fixed"
     assert session["summary"]["student_count"] == 2
     assert session["summary"]["average_score"] == 9.5
+    assert session["student_preview"][0]["classroom"] == "21"
+    assert session["student_preview"][1]["classroom"] == "24"
+    assert session["student_preview"][0]["scanned_exam_code"] == "0601"
+    assert session["student_preview"][1]["scanned_exam_code"] == "0601"
+    assert session["student_preview"][0]["scanned_exam_date"] == ""
     assert session["student_preview"][1]["blank_count"] == 1
 
 
@@ -252,6 +288,160 @@ def test_exam_can_be_saved_without_questions_and_answer_key_uploaded_from_mappin
     assert detail["questions"][0]["booklet_mappings"]["B"]["position"] == 2
 
 
+def test_definition_excel_skips_blank_tail_rows_and_keeps_answer_layer_pending(client: TestClient) -> None:
+    save_response = client.post("/api/exams", json=build_draft_exam_payload())
+    assert save_response.status_code == 200
+
+    workbook_blob = build_definition_workbook(
+        [
+            [1, "Matematik", 10, 1, "", 2, ""],
+            [2, "Fen", 5, 2, "", 1, ""],
+            [None, None, None, None, None, None, None],
+        ]
+    )
+    response = client.post(
+        "/api/exams/TASLAK01/definition-file",
+        files={
+            "file": (
+                "definition.xlsx",
+                workbook_blob,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail["summary"]["question_count"] == 2
+    assert detail["summary"]["has_answer_key"] is False
+    assert detail["summary"]["scoring_ready"] is False
+    assert detail["questions"][0]["booklet_mappings"]["B"]["position"] == 2
+    assert detail["answer_key_profile"]["import_format"] == "definition-excel"
+
+
+def test_definition_excel_with_answers_removes_optical_requirement(client: TestClient) -> None:
+    save_response = client.post("/api/exams", json=build_draft_exam_payload())
+    assert save_response.status_code == 200
+
+    workbook_blob = build_definition_workbook(
+        [
+            [1, "Matematik", 10, 1, "A", 2, "A"],
+            [2, "Fen", 5, 2, "D", 1, "D"],
+        ]
+    )
+    response = client.post(
+        "/api/exams/TASLAK01/definition-file",
+        files={
+            "file": (
+                "definition.xlsx",
+                workbook_blob,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail["summary"]["has_answer_key"] is True
+    assert detail["summary"]["scoring_ready"] is True
+    assert detail["summary"]["analysis_ready"] is True
+    assert detail["questions"][1]["booklet_mappings"]["A"]["correct_answer"] == "D"
+
+
+def test_definition_excel_accepts_instruction_first_workbook(client: TestClient) -> None:
+    save_response = client.post("/api/exams", json=build_draft_exam_payload())
+    assert save_response.status_code == 200
+
+    workbook_blob = build_definition_workbook(
+        [
+            [1, "Matematik", 10, 1, "A", 2, "A"],
+            [2, "Fen", 5, 2, "D", 1, "D"],
+        ],
+        include_intro_sheet=True,
+    )
+    response = client.post(
+        "/api/exams/TASLAK01/definition-file",
+        files={
+            "file": (
+                "definition.xlsx",
+                workbook_blob,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail["summary"]["question_count"] == 2
+    assert detail["summary"]["scoring_ready"] is True
+    assert detail["questions"][0]["booklet_mappings"]["A"]["correct_answer"] == "A"
+
+
+def test_definition_excel_accepts_single_booklet_only_without_forcing_others(client: TestClient) -> None:
+    save_response = client.post("/api/exams", json=build_draft_exam_payload())
+    assert save_response.status_code == 200
+
+    workbook_blob = build_definition_workbook(
+        [
+            [1, "Matematik", 10, 1, "A"],
+            [2, "Fen", 5, 2, "D"],
+        ],
+        headers=["kanonik_no", "grup_etiketi", "agirlik", "A_sira", "A_cevap"],
+    )
+    response = client.post(
+        "/api/exams/TASLAK01/definition-file",
+        files={
+            "file": (
+                "definition.xlsx",
+                workbook_blob,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail["booklet_codes"] == ["A"]
+    assert detail["summary"]["scoring_ready"] is True
+    assert detail["questions"][0]["booklet_mappings"]["A"]["position"] == 1
+
+
+def test_definition_excel_accepts_extra_booklet_columns_added_to_the_right(client: TestClient) -> None:
+    save_response = client.post("/api/exams", json=build_draft_exam_payload())
+    assert save_response.status_code == 200
+
+    workbook_blob = build_definition_workbook(
+        [
+            [1, "Matematik", 10, 1, "A", 2, "A", 3, "A"],
+            [2, "Fen", 5, 2, "D", 1, "D", 4, "D"],
+        ],
+        headers=["kanonik_no", "grup_etiketi", "agirlik", "A_sira", "A_cevap", "B_sira", "B_cevap", "E_sira", "E_cevap"],
+    )
+    response = client.post(
+        "/api/exams/TASLAK01/definition-file",
+        files={
+            "file": (
+                "definition.xlsx",
+                workbook_blob,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail["booklet_codes"] == ["A", "B", "E"]
+    assert detail["questions"][1]["booklet_mappings"]["E"]["position"] == 4
+
+
+def test_exam_definition_template_endpoint_returns_xlsx_signature(client: TestClient) -> None:
+    response = client.get("/api/templates/exam-definition-xlsx")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    assert response.content.startswith(b"PK")
+
+
 def test_single_booklet_fixed_width_answer_key_upload_is_accepted(client: TestClient) -> None:
     payload = build_single_booklet_exam_payload()
     payload["questions"] = []
@@ -269,6 +459,32 @@ def test_single_booklet_fixed_width_answer_key_upload_is_accepted(client: TestCl
     assert detail["summary"]["question_count"] == 10
     assert detail["answer_key_profile"]["import_format"] == "answer-key-vendor-fixed"
     assert detail["questions"][9]["booklet_mappings"]["A"]["correct_answer"] == "C"
+
+
+def test_sequential_answer_key_marks_weighted_analysis_as_provisional(client: TestClient) -> None:
+    payload = build_single_booklet_exam_payload()
+    payload["questions"] = []
+    save_response = client.post("/api/exams", json=payload)
+    assert save_response.status_code == 200
+
+    txt_payload = "     50001210601081                  CEVAP ANAHTARI    AABBDAADEC\n"
+    upload_response = client.post(
+        "/api/exams/TEKKITAPCIK/answer-key",
+        files={"file": ("answer_key.txt", txt_payload.encode("utf-8"), "text/plain")},
+    )
+    assert upload_response.status_code == 200
+
+    import_payload = "student_id,booklet_code,Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10\n1001,A,A,A,B,B,D,A,A,D,E,C\n"
+    import_response = client.post(
+        "/api/exams/TEKKITAPCIK/imports",
+        files={"file": ("answers.csv", import_payload, "text/csv")},
+    )
+
+    assert import_response.status_code == 200
+    session = import_response.json()["session"]
+    assert session["analysis_integrity"]["status"] == "provisional"
+    assert any(item["code"] == "defaulted_weights" for item in session["analysis_integrity"]["warnings"])
+    assert "Ortalama puan" in session["analysis_integrity"]["affected_columns"]["summary_cards"]
 
 
 def test_student_import_is_blocked_until_answer_key_exists(client: TestClient) -> None:

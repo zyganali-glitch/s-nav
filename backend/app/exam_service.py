@@ -367,10 +367,152 @@ def build_academic_commentary(
     return commentary
 
 
+def mapping_has_answer(mapping: dict[str, Any]) -> bool:
+    return bool(normalize_answer((mapping or {}).get("correct_answer")))
+
+
+def question_has_positions(question: dict[str, Any], booklet_codes: list[str]) -> bool:
+    booklet_mappings = question.get("booklet_mappings") or {}
+    for booklet_code in booklet_codes:
+        mapping = booklet_mappings.get(booklet_code) or {}
+        if int(mapping.get("position") or 0) <= 0:
+            return False
+    return True
+
+
+def question_has_answers(question: dict[str, Any], booklet_codes: list[str]) -> bool:
+    booklet_mappings = question.get("booklet_mappings") or {}
+    for booklet_code in booklet_codes:
+        if not mapping_has_answer(booklet_mappings.get(booklet_code) or {}):
+            return False
+    return True
+
+
+def hydrate_questions_from_optical_answers(
+    questions: list[dict[str, Any]],
+    booklet_codes: list[str],
+    optical_answer_key_booklets: dict[str, dict[str, str]] | None,
+) -> list[dict[str, Any]]:
+    hydrated_questions = deepcopy(questions)
+    optical_answer_key_booklets = optical_answer_key_booklets or {}
+    if not hydrated_questions or not optical_answer_key_booklets:
+        return hydrated_questions
+
+    for question in hydrated_questions:
+        booklet_mappings = question.setdefault("booklet_mappings", {})
+        for booklet_code in booklet_codes:
+            mapping = booklet_mappings.get(booklet_code) or {}
+            position = int(mapping.get("position") or 0)
+            explicit_answer = normalize_answer(mapping.get("correct_answer"))
+            if explicit_answer or position <= 0:
+                booklet_mappings[booklet_code] = {
+                    "position": position,
+                    "correct_answer": explicit_answer,
+                }
+                continue
+
+            optical_answers = optical_answer_key_booklets.get(booklet_code) or {}
+            booklet_mappings[booklet_code] = {
+                "position": position,
+                "correct_answer": normalize_answer(optical_answers.get(str(position), "")),
+            }
+    return hydrated_questions
+
+
+def build_preparation_profile(exam: dict[str, Any]) -> dict[str, Any]:
+    booklet_codes = [normalize_token(code) for code in exam.get("booklet_codes", []) if normalize_token(code)]
+    questions = list(exam.get("questions") or [])
+    answer_key_profile = deepcopy(exam.get("answer_key_profile") or {})
+    prep_method_code = str(exam.get("prep_method_code") or "manual").strip() or "manual"
+
+    question_count = len(questions)
+    has_positions = bool(question_count) and all(question_has_positions(question, booklet_codes) for question in questions)
+    has_answers = bool(question_count) and all(question_has_answers(question, booklet_codes) for question in questions)
+    has_weights = bool(question_count) and all(float(question.get("weight") or 0) > 0 for question in questions)
+    canonical_mapping_source = str(answer_key_profile.get("canonical_mapping_source") or ("explicit" if question_count else "missing"))
+    weight_source = str(answer_key_profile.get("weight_source") or ("explicit" if question_count else "missing"))
+    answer_source = str(answer_key_profile.get("answer_source") or ("manual" if has_answers else "missing"))
+
+    warnings: list[dict[str, Any]] = []
+    affected_columns: dict[str, list[str]] = {
+        "summary_cards": [],
+        "booklet_table": [],
+        "group_table": [],
+        "question_table": [],
+        "question_choice_table": [],
+        "student_table": [],
+    }
+
+    if not question_count or not has_positions or not has_answers:
+        warnings.append(
+            {
+                "code": "missing_answer_layer",
+                "severity": "error",
+                "title": "Puanlama icin cevap anahtari tamamlanmadi",
+                "message": "Bu sinavda soru siralari kayitli olsa bile tum kitapciklar icin dogru cevaplar tamamlanmadan ogrenci puanlamasi acilmaz.",
+            }
+        )
+
+    if len(booklet_codes) > 1 and canonical_mapping_source not in {"explicit", "manual", "profile", "copied-profile"}:
+        warnings.append(
+            {
+                "code": "inferred_canonical_mapping",
+                "severity": "warning",
+                "title": "Kitapcik permutasyonu kanonik olarak teyit edilmedi",
+                "message": "Cok kitapcikli sinavda kitapcik sirasi explicit kaynak yerine hizli/inferred yontemden geldigi icin soru bazli kanonik yorumlar provizyonel kabul edilmelidir.",
+            }
+        )
+        affected_columns["question_table"].extend(["Kitapçık sırası", "Anahtar"])
+        affected_columns["question_choice_table"].extend(["Kitapçık sırası", "Anahtar"])
+
+    if weight_source != "explicit":
+        warnings.append(
+            {
+                "code": "defaulted_weights",
+                "severity": "warning",
+                "title": "Soru agirliklari varsayilan degerde",
+                "message": "Agirlik kolonu explicit kaynaktan gelmedigi icin puan ve yuzde tabanli analizler varsayilan agirliklarla hesaplandi.",
+            }
+        )
+        affected_columns["summary_cards"].extend(["Ortalama puan", "Ort. yüzde"])
+        affected_columns["booklet_table"].extend(["Toplam puan", "Toplam net", "Ort. puan", "Maks.", "Ort. net"])
+        affected_columns["group_table"].extend(["Toplam puan", "Toplam net", "Ort. puan", "Maks.", "Ort. net"])
+        affected_columns["question_table"].append("Ağırlık")
+        affected_columns["question_choice_table"].append("Ağırlık")
+        affected_columns["student_table"].extend(["Puan", "Yüzde", "Net"])
+
+    for key in affected_columns:
+        affected_columns[key] = list(dict.fromkeys(affected_columns[key]))
+
+    scoring_ready = bool(question_count and has_positions and has_answers)
+    analysis_ready = scoring_ready and not any(item["severity"] == "warning" for item in warnings)
+    status = "ready" if analysis_ready else ("provisional" if scoring_ready else "blocked")
+    return {
+        "prep_method_code": prep_method_code,
+        "question_count": question_count,
+        "has_positions": has_positions,
+        "has_answers": has_answers,
+        "has_weights": has_weights,
+        "scoring_ready": scoring_ready,
+        "analysis_ready": analysis_ready,
+        "status": status,
+        "canonical_mapping_source": canonical_mapping_source,
+        "weight_source": weight_source,
+        "answer_source": answer_source,
+        "warnings": warnings,
+        "affected_columns": affected_columns,
+    }
+
+
+def exam_scoring_ready(exam: dict[str, Any]) -> bool:
+    return bool(build_preparation_profile(exam).get("scoring_ready"))
+
+
 def summarize_exam(exam: dict[str, Any]) -> dict[str, Any]:
     total_weight = round(sum(float(item["weight"]) for item in exam.get("questions", [])), 2)
     answer_key_profile = exam.get("answer_key_profile") or {}
     optical_booklets = exam.get("optical_answer_key_booklets") or {}
+    preparation_profile = build_preparation_profile(exam)
     return {
         "exam_code": exam["exam_code"],
         "title": exam["title"],
@@ -378,9 +520,14 @@ def summarize_exam(exam: dict[str, Any]) -> dict[str, Any]:
         "exam_year": exam.get("exam_year", ""),
         "exam_term": exam.get("exam_term", ""),
         "exam_type": exam.get("exam_type", ""),
+        "prep_method_code": exam.get("prep_method_code", "manual"),
         "form_template_id": exam.get("form_template_id", DEFAULT_FORM_TEMPLATE_ID),
         "form_template_name": exam.get("form_template_name", DEFAULT_FORM_TEMPLATE_NAME),
-        "has_answer_key": bool(exam.get("questions")),
+        "has_answer_key": bool(preparation_profile.get("has_answers")),
+        "scoring_ready": bool(preparation_profile.get("scoring_ready")),
+        "analysis_ready": bool(preparation_profile.get("analysis_ready")),
+        "preparation_status": preparation_profile.get("status"),
+        "preparation_warnings": deepcopy(preparation_profile.get("warnings") or []),
         "answer_key_updated_at": answer_key_profile.get("updated_at"),
         "answer_key_source": answer_key_profile.get("source_label"),
         "optical_answer_key_ready_booklets": sorted(optical_booklets.keys()),
@@ -397,6 +544,7 @@ def build_exam_detail(exam: dict[str, Any]) -> dict[str, Any]:
     enriched_exam = enrich_exam_sessions_for_reporting(exam)
     detail = dict(enriched_exam)
     detail["summary"] = summarize_exam(enriched_exam)
+    detail["preparation_profile"] = build_preparation_profile(enriched_exam)
     detail["active_form_template"] = {
         "id": enriched_exam.get("form_template_id", DEFAULT_FORM_TEMPLATE_ID),
         "name": enriched_exam.get("form_template_name", DEFAULT_FORM_TEMPLATE_NAME),
@@ -415,8 +563,9 @@ def build_answer_key_profile(
     import_format: str,
     booklet_strategy: str,
     source_file: str | None = None,
+    **extra_fields: Any,
 ) -> dict[str, Any]:
-    return {
+    profile = {
         "source_type": source_type,
         "source_label": source_label,
         "source_file": source_file or "",
@@ -425,6 +574,8 @@ def build_answer_key_profile(
         "question_count": question_count,
         "updated_at": now_label(),
     }
+    profile.update(extra_fields)
+    return profile
 
 
 def normalize_exam_payload(
@@ -482,8 +633,6 @@ def normalize_exam_payload(
             correct_answer = normalize_answer(raw_mapping.get("correct_answer"))
             if position <= 0:
                 raise ValueError(f"Soru {canonical_no} / {booklet_code} icin soru sirasi girilmelidir.")
-            if not correct_answer:
-                raise ValueError(f"Soru {canonical_no} / {booklet_code} icin dogru cevap girilmelidir.")
             if position in position_registry[booklet_code]:
                 other_question = position_registry[booklet_code][position]
                 raise ValueError(
@@ -512,10 +661,15 @@ def normalize_exam_payload(
         "exam_year": str(payload.get("exam_year") or (existing_exam or {}).get("exam_year") or "").strip(),
         "exam_term": str(payload.get("exam_term") or (existing_exam or {}).get("exam_term") or "").strip(),
         "exam_type": str(payload.get("exam_type") or (existing_exam or {}).get("exam_type") or "").strip(),
+        "prep_method_code": str(payload.get("prep_method_code") or (existing_exam or {}).get("prep_method_code") or "manual").strip() or "manual",
         "form_template_id": selected_template["id"],
         "form_template_name": selected_template["name"],
         "booklet_codes": booklet_codes,
-        "questions": questions,
+        "questions": hydrate_questions_from_optical_answers(
+            questions,
+            booklet_codes,
+            deepcopy((existing_exam or {}).get("optical_answer_key_booklets") or {}),
+        ),
         "sessions": list((existing_exam or {}).get("sessions", [])),
     }
 
@@ -527,12 +681,22 @@ def normalize_exam_payload(
     elif existing_questions == questions:
         exam["answer_key_profile"] = deepcopy((existing_exam or {}).get("answer_key_profile") or {})
     else:
+        hydrated_questions = exam.get("questions") or []
+        has_any_answer = any(
+            mapping_has_answer(mapping)
+            for question in hydrated_questions
+            for mapping in (question.get("booklet_mappings") or {}).values()
+        )
+        has_all_answers = bool(hydrated_questions) and all(question_has_answers(question, booklet_codes) for question in hydrated_questions)
         exam["answer_key_profile"] = build_answer_key_profile(
             source_type="manual",
             source_label="Form duzenleyici",
-            question_count=len(questions),
+            question_count=len(hydrated_questions),
             import_format="manual",
             booklet_strategy="manual",
+            canonical_mapping_source="explicit",
+            weight_source="explicit",
+            answer_source="manual" if has_all_answers else ("partial-manual" if has_any_answer else "missing"),
         )
     return exam
 
@@ -943,6 +1107,7 @@ def compute_import_session(
         net_policy,
     )
     analysis_glossary = build_analysis_glossary(net_policy)
+    analysis_integrity = build_preparation_profile(exam)
 
     return {
         "session_id": uuid4().hex[:10],
@@ -950,6 +1115,7 @@ def compute_import_session(
         "source_file": file_name,
         "import_format": import_format,
         "net_policy": net_policy,
+        "analysis_integrity": analysis_integrity,
         "summary": {
             "student_count": len(student_results),
             "total_questions": total_questions,

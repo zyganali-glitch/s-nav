@@ -25,6 +25,7 @@ TURKISH_ALPHABET_COMPACT = "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ"
 REPLACEMENT_CHAR = "�"
 TEXT_FIELD_NAMES = {"student_name", "student_surname"}
 AUTO_REVERSE_FIELD_NAMES = TEXT_FIELD_NAMES
+SOFT_SINGLE_AUXILIARY_FIELD_NAMES = {"exam_date_day", "exam_date_month", "exam_date_year"}
 
 EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
     "varsayilan": {
@@ -52,24 +53,16 @@ EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
                 "start_row": 23,
                 "end_row": 32,
                 "start_column": 31,
-                "end_column": 33,
-                "axis": "D",
-                "normalized_choices": "0123456789",
-                "reverse_columns": False,
-            },
-            {
-                "name": "class_section",
-                "start_row": 23,
-                "end_row": 32,
-                "start_column": 34,
                 "end_column": 34,
                 "axis": "D",
-                "normalized_choices": "ABCDEFGHIJ",
+                "normalized_choices": "0123456789",
+                "virtual": True,
+                "reverse_columns": True,
             },
             {
                 "name": "exam_code_prefix",
-                "start_row": 46,
-                "end_row": 55,
+                "start_row": 44,
+                "end_row": 53,
                 "start_column": 45,
                 "end_column": 45,
                 "axis": "D",
@@ -78,43 +71,47 @@ EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
             },
             {
                 "name": "exam_code_number",
-                "start_row": 46,
-                "end_row": 55,
+                "start_row": 44,
+                "end_row": 53,
                 "start_column": 42,
                 "end_column": 44,
                 "axis": "D",
                 "normalized_choices": "0123456789",
                 "virtual": True,
+                "reverse_columns": True,
             },
             {
                 "name": "exam_date_day",
-                "start_row": 46,
-                "end_row": 55,
-                "start_column": 38,
-                "end_column": 39,
+                "start_row": 44,
+                "end_row": 53,
+                "start_column": 39,
+                "end_column": 40,
                 "axis": "D",
                 "normalized_choices": "0123456789",
                 "virtual": True,
+                "reverse_columns": True,
             },
             {
                 "name": "exam_date_month",
-                "start_row": 46,
-                "end_row": 55,
-                "start_column": 36,
-                "end_column": 37,
+                "start_row": 44,
+                "end_row": 53,
+                "start_column": 37,
+                "end_column": 38,
                 "axis": "D",
                 "normalized_choices": "0123456789",
                 "virtual": True,
+                "reverse_columns": True,
             },
             {
                 "name": "exam_date_year",
-                "start_row": 46,
-                "end_row": 55,
-                "start_column": 32,
-                "end_column": 35,
+                "start_row": 44,
+                "end_row": 53,
+                "start_column": 33,
+                "end_column": 36,
                 "axis": "D",
                 "normalized_choices": "0123456789",
                 "virtual": True,
+                "reverse_columns": True,
             },
             {
                 "name": "student_surname",
@@ -197,24 +194,16 @@ EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
                 "start_row": 23,
                 "end_row": 32,
                 "start_column": 31,
-                "end_column": 33,
-                "axis": "D",
-                "normalized_choices": "0123456789",
-                "reverse_columns": False,
-            },
-            {
-                "name": "class_section",
-                "start_row": 23,
-                "end_row": 32,
-                "start_column": 34,
                 "end_column": 34,
                 "axis": "D",
-                "normalized_choices": "ABCDEFGHIJ",
+                "normalized_choices": "0123456789",
+                "virtual": True,
+                "reverse_columns": True,
             },
             {
                 "name": "exam_code_prefix",
-                "start_row": 46,
-                "end_row": 55,
+                "start_row": 44,
+                "end_row": 53,
                 "start_column": 45,
                 "end_column": 45,
                 "axis": "D",
@@ -223,43 +212,47 @@ EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
             },
             {
                 "name": "exam_code_number",
-                "start_row": 46,
-                "end_row": 55,
+                "start_row": 44,
+                "end_row": 53,
                 "start_column": 42,
                 "end_column": 44,
                 "axis": "D",
                 "normalized_choices": "0123456789",
                 "virtual": True,
+                "reverse_columns": True,
             },
             {
                 "name": "exam_date_day",
-                "start_row": 46,
-                "end_row": 55,
-                "start_column": 38,
-                "end_column": 39,
+                "start_row": 44,
+                "end_row": 53,
+                "start_column": 39,
+                "end_column": 40,
                 "axis": "D",
                 "normalized_choices": "0123456789",
                 "virtual": True,
+                "reverse_columns": True,
             },
             {
                 "name": "exam_date_month",
-                "start_row": 46,
-                "end_row": 55,
-                "start_column": 36,
-                "end_column": 37,
+                "start_row": 44,
+                "end_row": 53,
+                "start_column": 37,
+                "end_column": 38,
                 "axis": "D",
                 "normalized_choices": "0123456789",
                 "virtual": True,
+                "reverse_columns": True,
             },
             {
                 "name": "exam_date_year",
-                "start_row": 46,
-                "end_row": 55,
-                "start_column": 32,
-                "end_column": 35,
+                "start_row": 44,
+                "end_row": 53,
+                "start_column": 33,
+                "end_column": 36,
                 "axis": "D",
                 "normalized_choices": "0123456789",
                 "virtual": True,
+                "reverse_columns": True,
             },
             {
                 "name": "student_surname",
@@ -342,19 +335,11 @@ EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
                 "start_row": 23,
                 "end_row": 32,
                 "start_column": 31,
-                "end_column": 33,
-                "axis": "D",
-                "normalized_choices": "0123456789",
-                "reverse_columns": False,
-            },
-            {
-                "name": "class_section",
-                "start_row": 23,
-                "end_row": 32,
-                "start_column": 34,
                 "end_column": 34,
                 "axis": "D",
-                "normalized_choices": "ABCDEFGHIJ",
+                "normalized_choices": "0123456789",
+                "virtual": True,
+                "reverse_columns": True,
             },
             {
                 "name": "exam_code_prefix",
@@ -375,36 +360,40 @@ EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
                 "axis": "D",
                 "normalized_choices": "0123456789",
                 "virtual": True,
+                "reverse_columns": True,
             },
             {
                 "name": "exam_date_day",
                 "start_row": 44,
                 "end_row": 53,
-                "start_column": 38,
-                "end_column": 39,
+                "start_column": 39,
+                "end_column": 40,
                 "axis": "D",
                 "normalized_choices": "0123456789",
                 "virtual": True,
+                "reverse_columns": True,
             },
             {
                 "name": "exam_date_month",
                 "start_row": 44,
                 "end_row": 53,
-                "start_column": 36,
-                "end_column": 37,
+                "start_column": 37,
+                "end_column": 38,
                 "axis": "D",
                 "normalized_choices": "0123456789",
                 "virtual": True,
+                "reverse_columns": True,
             },
             {
                 "name": "exam_date_year",
                 "start_row": 44,
                 "end_row": 53,
-                "start_column": 32,
-                "end_column": 35,
+                "start_column": 33,
+                "end_column": 36,
                 "axis": "D",
                 "normalized_choices": "0123456789",
                 "virtual": True,
+                "reverse_columns": True,
             },
             {
                 "name": "student_surname",
@@ -721,28 +710,74 @@ def decode_single_with_soft_threshold(
     values: list[int],
     tokens: list[str],
     threshold: int,
+    allow_soft_single: bool = True,
 ) -> tuple[str, str]:
+    def has_adjacent_ambiguity(ranked_entries: list[tuple[int, str, int]], competitor_floor: int) -> bool:
+        if len(ranked_entries) < 2:
+            return False
+        top_value, _, top_index = ranked_entries[0]
+        second_value, _, second_index = ranked_entries[1]
+        if second_value < competitor_floor:
+            return False
+        if abs(top_index - second_index) != 1:
+            return False
+        return top_value - second_value <= 1
+
     hits = [token for token, value in zip(tokens, values) if token and value >= threshold]
     if len(hits) == 1:
+        ranked = sorted(
+            ((value, token, index) for index, (token, value) in enumerate(zip(tokens, values)) if token),
+            key=lambda item: item[0],
+            reverse=True,
+        )
+        if has_adjacent_ambiguity(ranked, max(1, threshold - 1)):
+            return "", "adjacent_ambiguous"
         return hits[0], "single"
     if len(hits) > 1:
         return "", "multiple"
 
     ranked = sorted(
-        ((value, token) for token, value in zip(tokens, values) if token),
+        ((value, token, index) for index, (token, value) in enumerate(zip(tokens, values)) if token),
         key=lambda item: item[0],
         reverse=True,
     )
     if not ranked:
         return "", "blank"
 
-    top_value, top_token = ranked[0]
+    top_value, top_token, _ = ranked[0]
     second_value = ranked[1][0] if len(ranked) > 1 else 0
+    if not allow_soft_single:
+        return "", "blank"
+
     soft_threshold = max(1, threshold - 2)
-    if top_value >= soft_threshold and top_value - second_value >= 2 and sum(1 for value, _ in ranked if value == top_value) == 1:
+    if (
+        top_value >= soft_threshold
+        and top_value - second_value >= 2
+        and sum(1 for value, _, _ in ranked if value == top_value) == 1
+    ):
+        if has_adjacent_ambiguity(ranked, soft_threshold):
+            return "", "adjacent_ambiguous"
         return top_token, "soft_single"
 
     return "", "blank"
+
+
+def relaxed_candidate_is_safe(base_candidate: dict[str, Any], relaxed_candidate: dict[str, Any]) -> bool:
+    base_answers = base_candidate.get("answers") or {}
+    relaxed_answers = relaxed_candidate.get("answers") or {}
+    for position, base_answer in base_answers.items():
+        relaxed_answer = relaxed_answers.get(position)
+        if relaxed_answer and relaxed_answer != base_answer:
+            return False
+
+    base_booklet = normalize_token(base_candidate.get("booklet_code"))
+    relaxed_booklet = normalize_token(relaxed_candidate.get("booklet_code"))
+    if base_booklet and relaxed_booklet and base_booklet != relaxed_booklet:
+        return False
+
+    adds_missing_answers = len(relaxed_answers) > len(base_answers)
+    fills_missing_booklet = not base_booklet and bool(relaxed_booklet)
+    return adds_missing_answers or fills_missing_booklet
 
 
 def parse_form_template(project_root: Path, template_id: str | None) -> dict[str, Any]:
@@ -895,6 +930,17 @@ def build_virtual_template_region(template: dict[str, Any], spec: dict[str, Any]
     }
 
 
+def class_number_region_consumes_section_column(region: dict[str, Any] | None) -> bool:
+    if not region:
+        return False
+    choices = "".join(normalize_token(choice) for choice in region.get("choices") or [])
+    return (
+        str(region.get("axis") or "").upper() == "D"
+        and choices == "0123456789"
+        and int(region.get("start_column") or 0) <= 34 <= int(region.get("end_column") or 0)
+    )
+
+
 def get_named_field_regions(template: dict[str, Any]) -> dict[str, dict[str, Any]]:
     explicit_regions = resolve_coordinate_source_regions(template, "named_fields")
     named_regions: dict[str, dict[str, Any]] = {}
@@ -926,7 +972,7 @@ def get_named_field_regions(template: dict[str, Any]) -> dict[str, dict[str, Any
     )
     if class_number_region:
         class_number_region = dict(class_number_region)
-        class_number_region["reverse_columns"] = False
+        class_number_region["reverse_columns"] = True
         named_regions.setdefault("class_number", class_number_region)
 
     class_section_region = find_template_region(
@@ -938,7 +984,7 @@ def get_named_field_regions(template: dict[str, Any]) -> dict[str, dict[str, Any
         axis="D",
         normalized_choices="ABCDEFGHIJ",
     )
-    if class_section_region:
+    if class_section_region and not class_number_region_consumes_section_column(named_regions.get("class_number")):
         named_regions.setdefault("class_section", dict(class_section_region))
 
     for field_name, end_row, normalized_choices, start_column, end_column in (
@@ -1001,6 +1047,7 @@ def resolve_coordinate_source_regions(template: dict[str, Any], key: str) -> lis
     specs = get_template_coordinate_source(template).get(key) or []
     regions: list[dict[str, Any]] = []
     for index, spec in enumerate(specs, start=1):
+        semantic_name = spec.get("name", key)
         region = find_template_region(
             template,
             start_row=spec["start_row"],
@@ -1017,7 +1064,7 @@ def resolve_coordinate_source_regions(template: dict[str, Any], key: str) -> lis
             if not region:
                 continue
         annotated_region = dict(region)
-        annotated_region["semantic_name"] = spec.get("name", key)
+        annotated_region["semantic_name"] = semantic_name
         annotated_region["reverse_columns"] = bool(spec.get("reverse_columns")) or annotated_region["semantic_name"] in {
             "student_number",
         }
@@ -1039,7 +1086,12 @@ def decode_horizontal_pattern(segment: list[int], pattern: str, threshold: int) 
     return normalize_token(token) if token else "", status
 
 
-def decode_vertical_pattern(segment: list[int], choices: list[str], threshold: int) -> tuple[str, str]:
+def decode_vertical_pattern(
+    segment: list[int],
+    choices: list[str],
+    threshold: int,
+    allow_soft_single: bool = True,
+) -> tuple[str, str]:
     tokens = []
     values = []
     for index, value in enumerate(segment):
@@ -1051,7 +1103,7 @@ def decode_vertical_pattern(segment: list[int], choices: list[str], threshold: i
         tokens.append(token)
         values.append(value)
 
-    return decode_single_with_soft_threshold(values, tokens, threshold)
+    return decode_single_with_soft_threshold(values, tokens, threshold, allow_soft_single=allow_soft_single)
 
 
 def count_nonblank_prefix(tokens: list[str]) -> int:
@@ -1072,6 +1124,7 @@ def decode_vertical_region_once(
     region: dict[str, Any],
     threshold: int,
     row_shift: int,
+    allow_soft_single: bool,
 ) -> tuple[list[str], list[str]]:
     decoded_tokens: list[str] = []
     warnings: list[str] = []
@@ -1091,7 +1144,12 @@ def decode_vertical_region_once(
             row = matrix[row_index]
             segment.append(row[column_index] if column_index < len(row) else 0)
 
-        token, status = decode_vertical_pattern(segment, region["choices"], threshold)
+        token, status = decode_vertical_pattern(
+            segment,
+            region["choices"],
+            threshold,
+            allow_soft_single=allow_soft_single,
+        )
         decoded_tokens.append(token if token else "")
         if status == "multiple":
             warnings.append(f"Alan {region['index']} / kolon {output_index}: birden fazla isaret")
@@ -1134,6 +1192,7 @@ def build_vertical_region_candidates(
     matrix: list[list[int]],
     region: dict[str, Any],
     threshold: int,
+    allow_soft_single: bool,
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     semantic_name = str(region.get("semantic_name") or "")
@@ -1146,7 +1205,13 @@ def build_vertical_region_candidates(
         candidate_region = dict(region)
         candidate_region["reverse_columns"] = reverse_columns
         for row_shift in get_named_field_row_shift_candidates(region):
-            decoded_tokens, warnings = decode_vertical_region_once(matrix, candidate_region, threshold, row_shift)
+            decoded_tokens, warnings = decode_vertical_region_once(
+                matrix,
+                candidate_region,
+                threshold,
+                row_shift,
+                allow_soft_single,
+            )
             candidates.append(
                 {
                     "base_score": (
@@ -1196,8 +1261,9 @@ def decode_vertical_region(
     threshold: int,
     preferred_shift: int | None = None,
     preferred_reverse_columns: bool | None = None,
+    allow_soft_single: bool = True,
 ) -> tuple[str, list[str]]:
-    candidates = build_vertical_region_candidates(matrix, region, threshold)
+    candidates = build_vertical_region_candidates(matrix, region, threshold, allow_soft_single)
     selected_candidate = max(
         candidates,
         key=lambda candidate: (
@@ -1239,7 +1305,13 @@ def decode_auxiliary_fields(
     grouped_candidates: dict[str, dict[str, list[dict[str, Any]]]] = {}
     for field_name, region in field_regions.items():
         shift_group = get_named_field_shift_group(region)
-        grouped_candidates.setdefault(shift_group, {})[field_name] = build_vertical_region_candidates(matrix, region, threshold)
+        allow_soft_single = field_name in SOFT_SINGLE_AUXILIARY_FIELD_NAMES
+        grouped_candidates.setdefault(shift_group, {})[field_name] = build_vertical_region_candidates(
+            matrix,
+            region,
+            threshold,
+            allow_soft_single=allow_soft_single,
+        )
 
     for shift_group, candidates_by_region in grouped_candidates.items():
         preferred_variant = choose_preferred_field_variant(candidates_by_region)
@@ -1248,12 +1320,14 @@ def decode_auxiliary_fields(
 
     for field_name, region in field_regions.items():
         preferred_variant = preferred_variant_by_group.get(get_named_field_shift_group(region))
+        allow_soft_single = field_name in SOFT_SINGLE_AUXILIARY_FIELD_NAMES
         decoded_text, region_warnings = decode_vertical_region(
             matrix,
             region,
             threshold,
             preferred_shift=preferred_variant[0] if preferred_variant else None,
             preferred_reverse_columns=preferred_variant[1] if preferred_variant else None,
+            allow_soft_single=allow_soft_single,
         )
         warnings.extend(region_warnings)
         normalized_text = normalize_decoded_field_value(field_name, decoded_text)
@@ -1270,7 +1344,7 @@ def decode_auxiliary_fields(
     class_number = decoded_fields.get("class_number") or ""
     class_section = decoded_fields.get("class_section") or ""
     if class_number or class_section:
-        decoded_fields["classroom"] = f"{class_number}{class_section}".strip()
+        decoded_fields["classroom"] = f"{class_section}{class_number}".strip()
 
     exam_code_prefix = decoded_fields.get("exam_code_prefix") or ""
     exam_code_number = decoded_fields.get("exam_code_number") or ""
@@ -1373,6 +1447,8 @@ def decode_answers_from_sheet(
                 answers[str(position)] = normalize_answer(answer)
             elif status == "multiple":
                 warnings.append(f"Q{position}: birden fazla isaret")
+            elif status == "adjacent_ambiguous":
+                warnings.append(f"Q{position}: komsu siklar birbirine cok yakin, operator kontrolu gerekli")
             position += 1
 
     return answers, warnings
@@ -1415,10 +1491,12 @@ def build_decoded_sheet_payload(
     threshold: int,
     fallback_booklet: str | None,
     matrix_orientation: str,
+    auxiliary_threshold: int | None = None,
 ) -> dict[str, Any]:
     booklet_code = detect_booklet_code(matrix, template, exam.get("booklet_codes", []), threshold, fallback_booklet)
     answers, warnings = decode_answers_from_sheet(matrix, template, threshold)
-    decoded_fields, field_warnings = decode_auxiliary_fields(matrix, template, threshold)
+    field_threshold = auxiliary_threshold if auxiliary_threshold is not None else threshold
+    decoded_fields, field_warnings = decode_auxiliary_fields(matrix, template, field_threshold)
     diagnostics = build_decode_diagnostics(matrix, template, threshold)
     warnings.extend(field_warnings)
     return {
@@ -1441,8 +1519,8 @@ def build_orientation_candidates(matrix: list[list[int]]) -> list[tuple[str, lis
     if not matrix:
         return [("as_is", matrix)]
     return [
-        ("as_is", matrix),
         ("flip_vertical", list(reversed(matrix))),
+        ("as_is", matrix),
     ]
 
 
@@ -1463,11 +1541,23 @@ def decode_sheet(
     if threshold > 1:
         relaxed_threshold = threshold - 1
         relaxed_candidates = [
-            build_decoded_sheet_payload(sheet, candidate_matrix, template, exam, relaxed_threshold, fallback_booklet, orientation)
+            build_decoded_sheet_payload(
+                sheet,
+                candidate_matrix,
+                template,
+                exam,
+                relaxed_threshold,
+                fallback_booklet,
+                orientation,
+                auxiliary_threshold=threshold,
+            )
             for orientation, candidate_matrix in build_orientation_candidates(matrix)
         ]
         best_relaxed_candidate = max(relaxed_candidates, key=lambda candidate: score_decoded_sheet_candidate(candidate, exam))
-        if score_decoded_sheet_candidate(best_relaxed_candidate, exam) > score_decoded_sheet_candidate(best_candidate, exam):
+        if (
+            score_decoded_sheet_candidate(best_relaxed_candidate, exam) > score_decoded_sheet_candidate(best_candidate, exam)
+            and relaxed_candidate_is_safe(best_candidate, best_relaxed_candidate)
+        ):
             best_candidate = deepcopy(best_relaxed_candidate)
             best_candidate.setdefault("warnings", []).append(
                 f"Analiz esigi {relaxed_threshold}'e dusurulerek zayif isaretler geri kazanildi."
@@ -1520,7 +1610,7 @@ def score_decoded_sheet_candidate(decoded_sheet: dict[str, Any], exam: dict[str,
         score -= abs(expected_question_count - decoded_question_count) * 50
     score -= min(outside_candidate_mark_count, 200)
 
-    as_is_preference = 1 if decoded_sheet.get("matrix_orientation") == "as_is" else 0
+    flip_preference = 1 if decoded_sheet.get("matrix_orientation") == "flip_vertical" else 0
     return (
         score,
         contiguous_prefix,
@@ -1529,7 +1619,7 @@ def score_decoded_sheet_candidate(decoded_sheet: dict[str, Any], exam: dict[str,
         named_field_detected,
         answer_region_candidate_mark_count,
         -outside_candidate_mark_count,
-        as_is_preference,
+        flip_preference,
     )
 
 
@@ -1601,9 +1691,11 @@ def build_questions_from_scanned_booklets(
             for booklet, answers in booklet_answers.items():
                 if booklet not in normalized_booklets:
                     continue
+                existing_mapping = (question.get("booklet_mappings") or {}).get(booklet) or {}
+                existing_position = int(existing_mapping.get("position") or canonical_no)
                 question.setdefault("booklet_mappings", {})[booklet] = {
-                    "position": canonical_no,
-                    "correct_answer": normalize_answer(answers.get(str(canonical_no), "")),
+                    "position": existing_position,
+                    "correct_answer": normalize_answer(answers.get(str(existing_position), "")),
                 }
         return merged_questions
 
@@ -1716,6 +1808,9 @@ def apply_optical_answer_key(
         import_format="device-optical",
         booklet_strategy="sequential",
         source_file=source_file,
+        canonical_mapping_source="single-booklet-sequential" if len(updated_exam.get("booklet_codes", [])) == 1 else "inferred-sequential",
+        weight_source="defaulted",
+        answer_source="optical",
     )
     updated_exam["answer_key_profile"]["detected_booklet_code"] = booklet_code
     updated_exam["answer_key_profile"]["ready_booklet_count"] = ready_count

@@ -40,17 +40,58 @@ const NET_RULE_OPTIONS = [
   },
 ];
 
+const PREP_METHOD_OPTIONS = [
+  {
+    code: "full-excel",
+    label: "Tam Excel tanımı",
+    description: "Kanonik sıra, ağırlık, grup ve isterse doğru cevaplar tek Excel dosyasından alınır.",
+    panels: ["definition"],
+  },
+  {
+    code: "hybrid-excel-optical",
+    label: "Excel metadata + optik cevap anahtarı",
+    description: "Excel dosyası kanonik sıra ve ağırlıkları getirir; cevaplar gerekirse optikten tamamlanır.",
+    panels: ["definition"],
+  },
+  {
+    code: "optical-only",
+    label: "Optik cevap anahtarı ile hızlı puanlama",
+    description: "Cevap anahtarı optikten alınır; eksik kanonik metadata varsa akademik analiz provizyonel işaretlenir.",
+    panels: [],
+  },
+  {
+    code: "paste-ranges",
+    label: "Kitapçık sırası yapıştır + blok ağırlık",
+    description: "Permütasyonu ve ağırlıkları toplu yapıştırma ile kur; cevapları optikten veya ayrı anahtar dosyasından tamamla.",
+    panels: ["bulk-edit"],
+  },
+  {
+    code: "profile-copy",
+    label: "Hazır profil kopyala",
+    description: "Benzer bir sınavın tanımını mevcut sınava tek adımda kopyala.",
+    panels: ["profile-copy"],
+  },
+  {
+    code: "manual",
+    label: "Manuel soru düzenleyici",
+    description: "Soru kartlarını elle düzenle; gerekliyse sonradan optik veya dosya anahtarıyla tamamla.",
+    panels: [],
+  },
+];
+
 const state = {
   exams: [],
   formTemplates: [],
   selectedExamCode: "",
   activeExamDetail: null,
   currentSession: null,
+  answerMatrixViewMode: "canonical",
   operator: {
     netRuleCode: "none",
   },
   teacher: {
     isUploadingAnswerKey: false,
+    isUploadingDefinition: false,
   },
   capture: {
     armed: false,
@@ -69,6 +110,7 @@ const state = {
     exam_year: "",
     exam_term: "",
     exam_type: "",
+    prep_method_code: "manual",
     form_template_id: "varsayilan",
     booklet_codes: ["A"],
     questions: [],
@@ -92,7 +134,20 @@ const dom = {
   examTypeInput: document.getElementById("examTypeInput"),
   examDescriptionInput: document.getElementById("examDescriptionInput"),
   bookletCodesInput: document.getElementById("bookletCodesInput"),
+  prepMethodSelect: document.getElementById("prepMethodSelect"),
+  prepMethodHelp: document.getElementById("prepMethodHelp"),
+  prepMethodStatePill: document.getElementById("prepMethodStatePill"),
+  prepMethodSummary: document.getElementById("prepMethodSummary"),
   formTemplateSelect: document.getElementById("formTemplateSelect"),
+  definitionFileInput: document.getElementById("definitionFileInput"),
+  downloadDefinitionTemplateBtn: document.getElementById("downloadDefinitionTemplateBtn"),
+  uploadDefinitionFileBtn: document.getElementById("uploadDefinitionFileBtn"),
+  permutationPasteInput: document.getElementById("permutationPasteInput"),
+  weightRangeInput: document.getElementById("weightRangeInput"),
+  applyPermutationBtn: document.getElementById("applyPermutationBtn"),
+  applyWeightRangesBtn: document.getElementById("applyWeightRangesBtn"),
+  profileSourceExamSelect: document.getElementById("profileSourceExamSelect"),
+  copyProfileBtn: document.getElementById("copyProfileBtn"),
   answerKeyFileInput: document.getElementById("answerKeyFileInput"),
   uploadAnswerKeyBtn: document.getElementById("uploadAnswerKeyBtn"),
   answerKeyStatePill: document.getElementById("answerKeyStatePill"),
@@ -142,6 +197,7 @@ const dom = {
   studentAnswerMatrixWrap: document.getElementById("studentAnswerMatrixWrap"),
   recentSessions: document.getElementById("recentSessions"),
   assessmentHighlights: document.getElementById("assessmentHighlights"),
+  analysisIntegrityWarnings: document.getElementById("analysisIntegrityWarnings"),
   exportCsvBtn: document.getElementById("exportCsvBtn"),
   exportXlsxBtn: document.getElementById("exportXlsxBtn"),
   exportTxtBtn: document.getElementById("exportTxtBtn"),
@@ -343,10 +399,82 @@ function getSelectedNetRuleCode() {
   return dom.netRuleSelect?.value || state.operator.netRuleCode || "none";
 }
 
+function getPrepMethodOption(methodCode = state.form.prep_method_code) {
+  return PREP_METHOD_OPTIONS.find((item) => item.code === methodCode) || PREP_METHOD_OPTIONS[PREP_METHOD_OPTIONS.length - 1];
+}
+
+function getPreparationProfile() {
+  if (state.activeExamDetail?.preparation_profile) {
+    return state.activeExamDetail.preparation_profile;
+  }
+  if (state.activeExamDetail?.summary) {
+    return {
+      ...state.activeExamDetail.summary,
+      warnings: state.activeExamDetail.summary.preparation_warnings || [],
+    };
+  }
+  return null;
+}
+
+function hasDefinitionFileSelected() {
+  return Boolean(dom.definitionFileInput.files?.length);
+}
+
+function renderPrepMethodSelect() {
+  const selected = getPrepMethodOption(state.form.prep_method_code).code;
+  dom.prepMethodSelect.innerHTML = PREP_METHOD_OPTIONS
+    .map((item) => `<option value="${escapeHtml(item.code)}">${escapeHtml(item.label)}</option>`)
+    .join("");
+  dom.prepMethodSelect.value = selected;
+  state.form.prep_method_code = selected;
+}
+
+function renderProfileSourceExamSelect() {
+  const currentExamCode = normalizeToken(state.form.exam_code);
+  const options = state.exams.filter((item) => item.exam_code !== currentExamCode);
+  dom.profileSourceExamSelect.innerHTML = [
+    '<option value="">Önce kaynak sınav seç</option>',
+    ...options.map((item) => `<option value="${escapeHtml(item.exam_code)}">${escapeHtml(item.exam_code)} · ${escapeHtml(item.title)}</option>`),
+  ].join("");
+}
+
+function renderPrepMethodPanels() {
+  const method = getPrepMethodOption();
+  const preparationProfile = getPreparationProfile();
+  const status = preparationProfile?.status || "blocked";
+  const readyTone = status === "ready" ? "is-success" : "is-warn";
+
+  document.querySelectorAll("[data-method-panel]").forEach((panel) => {
+    const shouldShow = method.panels.includes(panel.dataset.methodPanel);
+    panel.hidden = !shouldShow;
+  });
+
+  dom.prepMethodHelp.textContent = method.description;
+  dom.prepMethodSummary.textContent = preparationProfile?.warnings?.length
+    ? `${method.label} seçili. ${preparationProfile.warnings[0].message}`
+    : `${method.label} seçili. ${method.description}`;
+  dom.prepMethodStatePill.textContent = status === "ready"
+    ? "Analize hazır"
+    : status === "provisional"
+      ? "Provizyonel"
+      : "Eksik katman";
+  dom.prepMethodStatePill.className = `status-pill ${readyTone}`;
+
+  renderProfileSourceExamSelect();
+}
+
 function hasAnswerKeyLoaded() {
-  const activeQuestionCount = Number(state.activeExamDetail?.questions?.length || 0);
-  const draftQuestionCount = Number((state.form.questions || []).length || 0);
-  return Math.max(activeQuestionCount, draftQuestionCount) > 0;
+  const activePreparationProfile = getPreparationProfile();
+  if (activePreparationProfile?.scoring_ready) {
+    return true;
+  }
+
+  const bookletCodes = state.form.booklet_codes || [];
+  const draftQuestions = state.form.questions || [];
+  if (!draftQuestions.length) {
+    return false;
+  }
+  return draftQuestions.every((question) => bookletCodes.every((booklet) => normalizeToken(question.booklet_mappings?.[booklet]?.correct_answer || "")));
 }
 
 function renderFormTemplateSelect() {
@@ -406,6 +534,7 @@ function renderDeviceBookletOverrideSelect() {
 function renderAnswerKeyStatus() {
   const questionCount = state.form.questions.length;
   const profile = state.activeExamDetail?.answer_key_profile || {};
+  const preparationProfile = getPreparationProfile();
   const opticalReadyBooklets = state.activeExamDetail?.summary?.optical_answer_key_ready_count || 0;
   const opticalReadyNames = state.activeExamDetail?.summary?.optical_answer_key_ready_booklets || [];
   const totalBooklets = state.form.booklet_codes.length;
@@ -437,9 +566,14 @@ function renderAnswerKeyStatus() {
   const sourceLabel = profile.source_label || "Form düzenleyici";
   const sourceFile = profile.source_file || "Elle düzenlenen soru kartları";
   const updatedAt = profile.updated_at ? formatDateTime(profile.updated_at) : "Henüz kaydedilmedi";
+  const readinessText = preparationProfile?.analysis_ready
+    ? "Analize hazır"
+    : preparationProfile?.scoring_ready
+      ? "Puanlamaya hazır · analiz provizyonel"
+      : "Eksik katman";
 
-  dom.answerKeyStatePill.textContent = `${formatNumber(questionCount)} soru hazır`;
-  dom.answerKeyStatePill.className = "status-pill is-success";
+  dom.answerKeyStatePill.textContent = `${formatNumber(questionCount)} soru · ${readinessText}`;
+  dom.answerKeyStatePill.className = `status-pill ${preparationProfile?.analysis_ready ? "is-success" : "is-warn"}`;
   dom.answerKeyStatus.innerHTML = `
     <div class="answer-key-summary-grid">
       <article class="summary-card mini-card">
@@ -460,7 +594,11 @@ function renderAnswerKeyStatus() {
       </article>
     </div>
   `;
-  dom.operatorAnswerKeyStatus.textContent = `${questionCount} soruluk cevap anahtarı hazır. Operatör artık tepsiyi SR-3500 üzerinden okuyup doğrudan puanlayabilir.`;
+  dom.operatorAnswerKeyStatus.textContent = preparationProfile?.analysis_ready
+    ? `${questionCount} soruluk cevap anahtarı ve metadata hazır. Operatör tepsiyi doğrudan puanlayabilir ve analiz final kabul edilir.`
+    : preparationProfile?.scoring_ready
+      ? `${questionCount} soruluk cevap anahtarı hazır. Puanlama açılır; eksik metadata varsa bazı analiz başlıkları kırmızı provizyonel işaretlenir.`
+      : `${questionCount} soruluk yapı var ama cevap anahtarı katmanı henüz tamamlanmadı.`;
 }
 
 function setFeedback(message, tone = "warn") {
@@ -650,13 +788,23 @@ function renderActionStates() {
   const activeExamCode = normalizeToken(dom.operatorExamSelect.value || dom.operatorExamCodeInput.value || state.form.exam_code);
   const hasImportFile = Boolean(dom.importFileInput.files?.length);
   const hasAnswerKeyFile = Boolean(dom.answerKeyFileInput.files?.length);
+  const hasDefinitionFile = hasDefinitionFileSelected();
   const hasCaptureRows = getCaptureRows(dom.captureInput.value).length > 0;
   const isSaveReady = normalizeToken(dom.examCodeInput.value) && dom.examTitleInput.value.trim().length >= 2;
   const hasAnswerKey = hasAnswerKeyLoaded();
   const hasSession = Boolean(resolveCurrentSessionId() && activeExamCode);
+  const hasPermutationText = dom.permutationPasteInput.value.trim().length > 0;
+  const hasWeightText = dom.weightRangeInput.value.trim().length > 0;
+  const hasProfileSource = Boolean(dom.profileSourceExamSelect.value);
 
   dom.saveExamBtn.disabled = !isSaveReady;
+  dom.definitionFileInput.disabled = state.teacher.isUploadingDefinition;
+  dom.uploadDefinitionFileBtn.disabled = !isSaveReady || !hasDefinitionFile || state.teacher.isUploadingDefinition;
+  dom.downloadDefinitionTemplateBtn.disabled = false;
   dom.uploadAnswerKeyBtn.disabled = !isSaveReady || !hasAnswerKeyFile || state.teacher.isUploadingAnswerKey;
+  dom.applyPermutationBtn.disabled = !hasPermutationText;
+  dom.applyWeightRangesBtn.disabled = !hasWeightText;
+  dom.copyProfileBtn.disabled = !hasProfileSource;
   dom.readOpticalAnswerKeyBtn.disabled = !activeExamCode || state.capture.isReadingDevice;
   dom.deviceImportBtn.disabled = !activeExamCode || !hasAnswerKey || state.capture.isReadingDevice;
   dom.runImportBtnTop.disabled = !(activeExamCode && hasImportFile && hasAnswerKey);
@@ -742,6 +890,7 @@ async function requestDeviceAnswerKeyRead() {
     renderDeviceReadAnalysis(payload.device?.metadata || null);
     state.currentSession = null;
     fillForm(payload.exam);
+    const preparationProfile = payload.exam?.preparation_profile || payload.exam?.summary || {};
 
     const processedBooklets = payload.processed_booklets || [];
     const detectedBooklet = processedBooklets.join(", ") || payload.decoded_sheet?.booklet_code || bookletCode || "?";
@@ -749,7 +898,9 @@ async function requestDeviceAnswerKeyRead() {
     const totalCount = payload.exam?.answer_key_profile?.total_booklet_count || state.form.booklet_codes.length || processedBooklets.length;
     const questionCount = payload.exam?.summary?.question_count || payload.decoded_sheet?.decoded_question_count || 0;
     setStatus("Optik cevap anahtarı alındı", "success");
-    if (processedBooklets.length > 1) {
+    if (preparationProfile.analysis_ready) {
+      setFeedback(`${detectedBooklet} kitapçık akışı metadata ile birleşti. Sınav artık final analiz için hazır.`, "success");
+    } else if (processedBooklets.length > 1) {
       setFeedback(`${detectedBooklet} kitapçıkları hafızaya alındı. Hazır durum: ${formatNumber(readyCount)}/${formatNumber(totalCount)} kitapçık.`, "success");
     } else if (questionCount && readyCount >= totalCount) {
       setFeedback(`${detectedBooklet} kitapçığı tamamlandı. ${formatNumber(questionCount)} soruluk cevap anahtarı artık tepsi puanlamaya hazır.`, "success");
@@ -1026,16 +1177,23 @@ function renderImportHint() {
   const totalBooklets = state.form.booklet_codes.length || 0;
   const bookletText = state.form.booklet_codes.join(", ") || "A";
   const templateName = getFormTemplateName(state.form.form_template_id);
+  const method = getPrepMethodOption();
+  const preparationProfile = getPreparationProfile();
 
-  dom.dynamicImportHint.textContent = questionCount
-    ? `Bu sınav için ${questionCount} soru, ${bookletText} kitapçıkları ve ${templateName} optik formatı hazır. Operatör tarafı artık bu cevap anahtarı olmadan okutmaya açılmaz.`
-    : opticalReadyCount
-      ? `Bu sınav için ${templateName} optik formatında ${opticalReadyCount}/${totalBooklets} kitapçığın optik cevap anahtarı alındı. Kalan kitapçıklar tamamlanınca puanlama açılacak.`
-      : `Bu sınav için ${templateName} optik formatı seçildi ama cevap anahtarı henüz yok. Öncelikli yol operatörün optik cevap anahtarını okutmasıdır; gerekirse teacher panelinden yedek cevap anahtarı yüklenebilir.`;
+  dom.dynamicImportHint.textContent = preparationProfile?.analysis_ready
+    ? `${method.label} ile bu sınav analize hazır. ${templateName} formatında doğrudan puanlamaya geçebilirsin.`
+    : preparationProfile?.scoring_ready
+      ? `${method.label} ile puanlama açıldı; ancak eksik metadata nedeniyle bazı analiz kolonları provizyonel gösterilecek.`
+      : questionCount
+        ? `Bu sınav için ${questionCount} soru ve ${bookletText} kitapçıkları tanımlı. ${method.label} seçili; puanlama için eksik cevap anahtarı katmanını tamamla.`
+        : opticalReadyCount
+          ? `Bu sınav için ${templateName} optik formatında ${opticalReadyCount}/${totalBooklets} kitapçığın optik cevap anahtarı alındı. Kalan kitapçıklar tamamlanınca puanlama açılacak.`
+          : `${method.label} seçili. ${templateName} optik formatı hazır; seçilen yöntemin sonraki adımlarını tamamladıktan sonra puanlama açılacak.`;
 }
 
 function renderSummaryCards(session) {
   const summary = session?.summary || null;
+  const affectedColumns = new Set((session?.analysis_integrity?.affected_columns?.summary_cards || []).map((item) => String(item)));
   if (!summary) {
     dom.summaryCards.innerHTML = '<div class="empty-state">İçe aktarma sonrası genel özet kartları burada görünür.</div>';
     return;
@@ -1056,9 +1214,32 @@ function renderSummaryCards(session) {
   ]
     .map(
       ([label, value]) => `
-        <article class="summary-card">
-          <p class="section-kicker">${escapeHtml(label)}</p>
+        <article class="summary-card ${affectedColumns.has(label) ? "is-warning" : ""}">
+          <p class="section-kicker ${affectedColumns.has(label) ? "warning-text" : ""}">${escapeHtml(label)}</p>
           <strong>${escapeHtml(value)}</strong>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function getAffectedColumns(session, tableKey) {
+  return new Set((session?.analysis_integrity?.affected_columns?.[tableKey] || []).map((item) => String(item)));
+}
+
+function renderAnalysisIntegrityWarnings(session) {
+  const warnings = session?.analysis_integrity?.warnings || [];
+  if (!warnings.length) {
+    dom.analysisIntegrityWarnings.innerHTML = '<div class="empty-state">Bu oturum için hazırlık bütünlüğü uyarısı yok.</div>';
+    return;
+  }
+
+  dom.analysisIntegrityWarnings.innerHTML = warnings
+    .map(
+      (warning) => `
+        <article class="summary-card ${warning.severity === "warning" ? "is-warning" : ""}">
+          <p class="section-kicker ${warning.severity === "warning" ? "warning-text" : ""}">${escapeHtml(warning.title)}</p>
+          <strong>${escapeHtml(warning.message)}</strong>
         </article>
       `
     )
@@ -1148,7 +1329,9 @@ function renderTable(container, headers, rows, emptyMessage) {
     return;
   }
 
-  const headerHtml = headers.map((header) => `<th>${escapeHtml(header.label)}</th>`).join("");
+  const headerHtml = headers
+    .map((header) => `<th class="${header.tone === "warning" ? "warning-text" : ""}">${escapeHtml(header.label)}</th>`)
+    .join("");
   const rowHtml = rows
     .map((row) => {
       const cells = headers
@@ -1183,6 +1366,49 @@ function buildResponseLookup(row) {
   );
 }
 
+function buildPositionLookup(row) {
+  return Object.fromEntries(
+    (row?.question_responses || []).map((item) => {
+      const pos = Number(item.booklet_position || item.canonical_no);
+      const answer = item.marked_answer || "";
+      const outcome = item.outcome || "";
+      let display;
+      if (!answer) {
+        display = "-(B)";
+      } else if (outcome === "correct") {
+        display = `${answer}(D)`;
+      } else if (outcome === "wrong") {
+        display = `${answer}(Y)`;
+      } else {
+        display = answer;
+      }
+      return [pos, display];
+    })
+  );
+}
+
+function getMaxFormPosition(session) {
+  const rows = session?.student_results || session?.student_preview || [];
+  let max = 0;
+  for (const row of rows) {
+    for (const item of row?.question_responses || []) {
+      const pos = Number(item.booklet_position || item.canonical_no);
+      if (pos > max) max = pos;
+    }
+  }
+  return max;
+}
+
+function hasNonTrivialBookletMapping(session) {
+  const rows = session?.student_results || session?.student_preview || [];
+  for (const row of rows) {
+    for (const item of row?.question_responses || []) {
+      if (Number(item.booklet_position) !== Number(item.canonical_no)) return true;
+    }
+  }
+  return false;
+}
+
 function renderStudentAnswerMatrix(session) {
   const rows = session?.student_results || session?.student_preview || [];
   const questionNumbers = getQuestionNumbers(session);
@@ -1191,23 +1417,59 @@ function renderStudentAnswerMatrix(session) {
     return;
   }
 
-  const enrichedRows = rows.map((row) => ({ ...row, __responseLookup: buildResponseLookup(row) }));
+  const showPositionView = state.answerMatrixViewMode === "position";
+  const hasMapping = hasNonTrivialBookletMapping(session);
+  const maxPos = getMaxFormPosition(session);
+  const positionNumbers = Array.from({ length: maxPos }, (_, i) => i + 1);
+
+  const enrichedRows = rows.map((row) => ({
+    ...row,
+    __responseLookup: buildResponseLookup(row),
+    __positionLookup: buildPositionLookup(row),
+  }));
+
+  const toggleHtml = hasMapping
+    ? `<div class="matrix-view-toggle" style="margin-bottom:0.5rem;display:flex;gap:0.5rem;align-items:center;">
+        <span style="font-size:0.85rem;opacity:0.7;">Görünüm:</span>
+        <button class="btn btn-sm ${!showPositionView ? 'btn-active' : ''}" data-matrix-view="canonical">Kanonik soru</button>
+        <button class="btn btn-sm ${showPositionView ? 'btn-active' : ''}" data-matrix-view="position">Form pozisyonu</button>
+       </div>`
+    : "";
+
+  const answerColumns = showPositionView
+    ? positionNumbers.map((pos) => ({
+        label: `P${pos}`,
+        render: (row) => row.__positionLookup?.[pos] || "-(B)",
+      }))
+    : questionNumbers.map((questionNo) => ({
+        label: `S${questionNo}`,
+        render: (row) => row.__responseLookup?.[questionNo] || "-(B)",
+      }));
+
+  const tableWrap = document.createElement("div");
   renderTable(
-    dom.studentAnswerMatrixWrap,
+    tableWrap,
     [
       { label: "Genel sıra", render: (row) => formatNumber(row.exam_rank) },
       { label: "Öğrenci", key: "student_id" },
       { label: "Ad soyad", render: (row) => row.student_full_name || `${row.student_name || ""} ${row.student_surname || ""}`.trim() || "—" },
       { label: "Sınıf", render: (row) => row.classroom || "—" },
       { label: "Kitapçık", key: "booklet_code" },
-      ...questionNumbers.map((questionNo) => ({
-        label: `S${questionNo}`,
-        render: (row) => row.__responseLookup?.[questionNo] || "-(B)",
-      })),
+      ...answerColumns,
     ],
     enrichedRows,
     "Öğrenci cevap matrisi yok."
   );
+
+  dom.studentAnswerMatrixWrap.innerHTML = toggleHtml;
+  dom.studentAnswerMatrixWrap.appendChild(tableWrap);
+
+  dom.studentAnswerMatrixWrap.querySelectorAll("[data-matrix-view]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.answerMatrixViewMode = btn.dataset.matrixView;
+      renderStudentAnswerMatrix(session);
+    });
+  });
 }
 
 function renderRecentSessions() {
@@ -1240,6 +1502,7 @@ function renderAnalytics(session) {
     renderNetRuleSelect(session.net_policy.code);
   }
   renderSummaryCards(session || null);
+  renderAnalysisIntegrityWarnings(session || null);
   renderReportMethodology(session || null);
   renderAssessmentHighlights(session || null);
 
@@ -1248,17 +1511,17 @@ function renderAnalytics(session) {
     [
       { label: "Kitapçık", key: "booklet_code" },
       { label: "Öğrenci", render: (row) => formatNumber(row.student_count) },
-      { label: "Toplam puan", render: (row) => formatNumber(row.total_score) },
+      { label: "Toplam puan", render: (row) => formatNumber(row.total_score), tone: getAffectedColumns(session, "booklet_table").has("Toplam puan") ? "warning" : undefined },
       { label: "Toplam doğru", render: (row) => formatNumber(row.total_correct_count) },
       { label: "Toplam yanlış", render: (row) => formatNumber(row.total_wrong_count) },
       { label: "Toplam boş", render: (row) => formatNumber(row.total_blank_count) },
-      { label: "Toplam net", render: (row) => formatNumber(row.total_net_count) },
-      { label: "Ort. puan", render: (row) => formatNumber(row.average_score) },
-      { label: "Maks.", render: (row) => formatNumber(row.max_score) },
+      { label: "Toplam net", render: (row) => formatNumber(row.total_net_count), tone: getAffectedColumns(session, "booklet_table").has("Toplam net") ? "warning" : undefined },
+      { label: "Ort. puan", render: (row) => formatNumber(row.average_score), tone: getAffectedColumns(session, "booklet_table").has("Ort. puan") ? "warning" : undefined },
+      { label: "Maks.", render: (row) => formatNumber(row.max_score), tone: getAffectedColumns(session, "booklet_table").has("Maks.") ? "warning" : undefined },
       { label: "Ort. doğru", render: (row) => formatNumber(row.average_correct_count) },
       { label: "Ort. yanlış", render: (row) => formatNumber(row.average_wrong_count) },
       { label: "Ort. boş", render: (row) => formatNumber(row.average_blank_count) },
-      { label: "Ort. net", render: (row) => formatNumber(row.average_net_count) },
+      { label: "Ort. net", render: (row) => formatNumber(row.average_net_count), tone: getAffectedColumns(session, "booklet_table").has("Ort. net") ? "warning" : undefined },
       { label: "Ort. doğruluk", render: (row) => formatPercent(row.average_accuracy_percent) },
     ],
     session?.booklet_summary || [],
@@ -1271,17 +1534,17 @@ function renderAnalytics(session) {
       { label: "Grup", key: "group_label" },
       { label: "Öğrenci", render: (row) => formatNumber(row.student_count) },
       { label: "Soru", render: (row) => formatNumber(row.question_count) },
-      { label: "Toplam puan", render: (row) => formatNumber(row.total_score) },
+      { label: "Toplam puan", render: (row) => formatNumber(row.total_score), tone: getAffectedColumns(session, "group_table").has("Toplam puan") ? "warning" : undefined },
       { label: "Toplam doğru", render: (row) => formatNumber(row.total_correct_count) },
       { label: "Toplam yanlış", render: (row) => formatNumber(row.total_wrong_count) },
       { label: "Toplam boş", render: (row) => formatNumber(row.total_blank_count) },
-      { label: "Toplam net", render: (row) => formatNumber(row.total_net_count) },
-      { label: "Ort. puan", render: (row) => formatNumber(row.average_score) },
+      { label: "Toplam net", render: (row) => formatNumber(row.total_net_count), tone: getAffectedColumns(session, "group_table").has("Toplam net") ? "warning" : undefined },
+      { label: "Ort. puan", render: (row) => formatNumber(row.average_score), tone: getAffectedColumns(session, "group_table").has("Ort. puan") ? "warning" : undefined },
       { label: "Ort. doğru", render: (row) => formatNumber(row.average_correct_count) },
       { label: "Ort. yanlış", render: (row) => formatNumber(row.average_wrong_count) },
       { label: "Ort. boş", render: (row) => formatNumber(row.average_blank_count) },
-      { label: "Ort. net", render: (row) => formatNumber(row.average_net_count) },
-      { label: "Maks.", render: (row) => formatNumber(row.max_score) },
+      { label: "Ort. net", render: (row) => formatNumber(row.average_net_count), tone: getAffectedColumns(session, "group_table").has("Ort. net") ? "warning" : undefined },
+      { label: "Maks.", render: (row) => formatNumber(row.max_score), tone: getAffectedColumns(session, "group_table").has("Maks.") ? "warning" : undefined },
       { label: "Ort. doğruluk", render: (row) => formatPercent(row.average_accuracy_percent) },
     ],
     session?.group_summary || [],
@@ -1293,7 +1556,7 @@ function renderAnalytics(session) {
     [
       { label: "Soru", render: (row) => `S${row.canonical_no}` },
       { label: "Grup", key: "group_label" },
-      { label: "Ağırlık", render: (row) => formatNumber(row.weight) },
+      { label: "Ağırlık", render: (row) => formatNumber(row.weight), tone: getAffectedColumns(session, "question_table").has("Ağırlık") ? "warning" : undefined },
       { label: "Doğru oran", render: (row) => formatPercent(row.correct_rate) },
       { label: "Yanlış oran", render: (row) => formatPercent(row.wrong_rate) },
       { label: "Boş oran", render: (row) => formatPercent(row.blank_rate) },
@@ -1309,12 +1572,14 @@ function renderAnalytics(session) {
       { label: "Ayırt edicilik", render: (row) => row.discrimination_label || "—" },
       {
         label: "Kitapçık sırası",
+        tone: getAffectedColumns(session, "question_table").has("Kitapçık sırası") ? "warning" : undefined,
         render: (row) => Object.entries(row.booklet_positions || {})
           .map(([booklet, position]) => `${booklet}:${position}`)
           .join(" | "),
       },
       {
         label: "Anahtar",
+        tone: getAffectedColumns(session, "question_table").has("Anahtar") ? "warning" : undefined,
         render: (row) => Object.entries(row.booklet_answer_key || {})
           .map(([booklet, answer]) => `${booklet}:${answer}`)
           .join(" | "),
@@ -1335,7 +1600,7 @@ function renderAnalytics(session) {
     [
       { label: "Soru", render: (row) => `S${row.canonical_no}` },
       { label: "Grup", key: "group_label" },
-      { label: "Ağırlık", render: (row) => formatNumber(row.weight) },
+      { label: "Ağırlık", render: (row) => formatNumber(row.weight), tone: getAffectedColumns(session, "question_choice_table").has("Ağırlık") ? "warning" : undefined },
       { label: "Öğrenci", render: (row) => formatNumber(row.student_count) },
       { label: "A", render: (row) => formatChoiceDistribution(row, "A") },
       { label: "B", render: (row) => formatChoiceDistribution(row, "B") },
@@ -1357,10 +1622,12 @@ function renderAnalytics(session) {
       { label: "Ayırt edicilik", render: (row) => row.discrimination_label || "—" },
       {
         label: "Kitapçık sırası",
+        tone: getAffectedColumns(session, "question_choice_table").has("Kitapçık sırası") ? "warning" : undefined,
         render: (row) => Object.entries(row.booklet_positions || {}).map(([booklet, position]) => `${booklet}:${position}`).join(" | "),
       },
       {
         label: "Anahtar",
+        tone: getAffectedColumns(session, "question_choice_table").has("Anahtar") ? "warning" : undefined,
         render: (row) => Object.entries(row.booklet_answer_key || {}).map(([booklet, answer]) => `${booklet}:${answer}`).join(" | "),
       },
     ],
@@ -1377,12 +1644,12 @@ function renderAnalytics(session) {
       { label: "Kitapçık", key: "booklet_code" },
       { label: "Form kodu", render: (row) => forceLtrText(row.scanned_exam_code || "") },
       { label: "Form tarihi", render: (row) => forceLtrText(row.scanned_exam_date || row.decoded_fields?.exam_date || "") },
-      { label: "Puan", render: (row) => formatNumber(row.score) },
-      { label: "Yüzde", render: (row) => formatPercent(row.weighted_percent) },
+      { label: "Puan", render: (row) => formatNumber(row.score), tone: getAffectedColumns(session, "student_table").has("Puan") ? "warning" : undefined },
+      { label: "Yüzde", render: (row) => formatPercent(row.weighted_percent), tone: getAffectedColumns(session, "student_table").has("Yüzde") ? "warning" : undefined },
       { label: "Doğru", render: (row) => formatNumber(row.correct_count) },
       { label: "Yanlış", render: (row) => formatNumber(row.wrong_count) },
       { label: "Boş", render: (row) => formatNumber(row.blank_count) },
-      { label: "Net", render: (row) => formatNumber(row.net_count) },
+      { label: "Net", render: (row) => formatNumber(row.net_count), tone: getAffectedColumns(session, "student_table").has("Net") ? "warning" : undefined },
       { label: "Toplam", render: (row) => formatNumber(row.total_questions) },
       { label: "Genel sıra", render: (row) => formatNumber(row.exam_rank) },
       { label: "Sınıf sıra", render: (row) => formatNumber(row.class_rank) },
@@ -1408,6 +1675,7 @@ function fillForm(examDetail) {
   state.form.exam_year = exam?.exam_year || "";
   state.form.exam_term = exam?.exam_term || "";
   state.form.exam_type = exam?.exam_type || "";
+  state.form.prep_method_code = exam?.prep_method_code || "manual";
   state.form.form_template_id = exam?.form_template_id || defaultTemplate.id;
   state.form.booklet_codes = exam?.booklet_codes?.length ? [...exam.booklet_codes] : ["A"];
   state.form.questions = exam?.questions?.length
@@ -1427,12 +1695,14 @@ function fillForm(examDetail) {
   dom.examDescriptionInput.value = state.form.description;
   dom.bookletCodesInput.value = state.form.booklet_codes.join(", ");
   dom.operatorExamCodeInput.value = state.form.exam_code;
+  renderPrepMethodSelect();
   renderFormTemplateSelect();
   renderNetRuleSelect();
 
   renderLibrary();
   renderExamSelect();
   renderDeviceBookletOverrideSelect();
+  renderPrepMethodPanels();
   renderQuestionBuilder();
   renderAnswerKeyStatus();
   renderImportHint();
@@ -1470,6 +1740,7 @@ function collectFormPayload() {
     exam_year: dom.examYearInput.value.trim(),
     exam_term: dom.examTermInput.value.trim(),
     exam_type: dom.examTypeInput.value.trim(),
+    prep_method_code: state.form.prep_method_code,
     form_template_id: dom.formTemplateSelect.value || getDefaultFormTemplate().id,
     booklet_codes: state.form.booklet_codes,
     questions: state.form.questions.map((question) => ({
@@ -1484,6 +1755,219 @@ function collectFormPayload() {
       ),
     })),
   };
+}
+
+function ensureQuestionCount(targetCount) {
+  while (state.form.questions.length < targetCount) {
+    state.form.questions.push(createDefaultQuestion(state.form.questions.length + 1));
+  }
+}
+
+function parsePermutationLines(inputText) {
+  const lines = inputText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+  if (!lines.length) {
+    throw new Error("Önce kitapçık sırası metni girilmelidir.");
+  }
+
+  const bookletSequences = {};
+  for (const line of lines) {
+    const [left, right] = line.split(/[:=]/, 2);
+    const bookletCode = normalizeToken(left);
+    if (!bookletCode || !right) {
+      throw new Error(`Kitapçık sırası satırı çözülemedi: ${line}`);
+    }
+    const sequence = right
+      .split(/[\s,;]+/)
+      .map((item) => Number(item.trim()))
+      .filter((item) => Number.isFinite(item) && item > 0);
+    if (!sequence.length) {
+      throw new Error(`${bookletCode} kitapçığı için en az bir soru sırası girilmelidir.`);
+    }
+    bookletSequences[bookletCode] = sequence;
+  }
+
+  const expectedBooklets = state.form.booklet_codes;
+  const missing = expectedBooklets.filter((bookletCode) => !bookletSequences[bookletCode]);
+  if (missing.length) {
+    throw new Error(`Şu kitapçıklar için sıra satırı eksik: ${missing.join(", ")}`);
+  }
+
+  const lengths = expectedBooklets.map((bookletCode) => bookletSequences[bookletCode].length);
+  if (new Set(lengths).size !== 1) {
+    throw new Error("Tüm kitapçıkların sıra uzunluğu aynı olmalıdır.");
+  }
+  return bookletSequences;
+}
+
+function applyPermutationPaste() {
+  syncBookletsFromInput();
+  const bookletSequences = parsePermutationLines(dom.permutationPasteInput.value);
+  const questionCount = bookletSequences[state.form.booklet_codes[0]].length;
+  ensureQuestionCount(questionCount);
+
+  state.form.questions = state.form.questions.slice(0, questionCount).map((question, index) => {
+    const nextQuestion = {
+      ...question,
+      canonical_no: index + 1,
+      booklet_mappings: { ...question.booklet_mappings },
+    };
+    state.form.booklet_codes.forEach((bookletCode) => {
+      nextQuestion.booklet_mappings[bookletCode] = {
+        position: bookletSequences[bookletCode][index],
+        correct_answer: "",
+      };
+    });
+    return nextQuestion;
+  });
+
+  renderQuestionBuilder();
+  renderAnswerKeyStatus();
+  renderImportHint();
+  renderActionStates();
+  setFeedback(`${formatNumber(questionCount)} soru için kitapçık sırası uygulandı. Cevap anahtarı katmanı artık optik veya ayrı dosyadan tamamlanabilir.`, "success");
+}
+
+function parseWeightRangeLines(inputText) {
+  const lines = inputText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+  if (!lines.length) {
+    throw new Error("Önce ağırlık blok metni girilmelidir.");
+  }
+
+  return lines.map((line) => {
+    const parts = line.split("|").map((item) => item.trim());
+    if (parts.length !== 3) {
+      throw new Error(`Ağırlık satırı çözülemedi: ${line}`);
+    }
+    const [rangeText, groupLabel, weightText] = parts;
+    const rangeMatch = rangeText.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+    if (!rangeMatch) {
+      throw new Error(`Soru aralığı çözülemedi: ${rangeText}`);
+    }
+    const start = Number(rangeMatch[1]);
+    const end = Number(rangeMatch[2] || rangeMatch[1]);
+    const weight = Number(weightText);
+    if (!Number.isFinite(weight) || weight <= 0) {
+      throw new Error(`Ağırlık pozitif sayı olmalıdır: ${line}`);
+    }
+    return {
+      start: Math.min(start, end),
+      end: Math.max(start, end),
+      groupLabel: groupLabel || "Genel",
+      weight,
+    };
+  });
+}
+
+function applyWeightRanges() {
+  const rules = parseWeightRangeLines(dom.weightRangeInput.value);
+  const maxQuestion = Math.max(...rules.map((item) => item.end));
+  ensureQuestionCount(maxQuestion);
+
+  state.form.questions = state.form.questions.map((question, index) => {
+    const canonicalNo = index + 1;
+    const matchingRule = rules.find((item) => canonicalNo >= item.start && canonicalNo <= item.end);
+    if (!matchingRule) {
+      return { ...question, canonical_no: canonicalNo };
+    }
+    return {
+      ...question,
+      canonical_no: canonicalNo,
+      group_label: matchingRule.groupLabel,
+      weight: matchingRule.weight,
+    };
+  });
+
+  renderQuestionBuilder();
+  renderAnswerKeyStatus();
+  renderImportHint();
+  renderActionStates();
+  setFeedback(`${formatNumber(rules.length)} ağırlık bloğu uygulandı.`, "success");
+}
+
+async function copyProfileFromExistingExam() {
+  const sourceExamCode = normalizeToken(dom.profileSourceExamSelect.value);
+  if (!sourceExamCode) {
+    throw new Error("Önce kaynak sınav profili seçilmelidir.");
+  }
+
+  const sourceExam = await requestJson(`/api/exams/${encodeURIComponent(sourceExamCode)}`);
+  state.form.booklet_codes = [...(sourceExam.booklet_codes || ["A"])];
+  state.form.form_template_id = sourceExam.form_template_id || getDefaultFormTemplate().id;
+  state.form.questions = (sourceExam.questions || []).map((question) => ({
+    canonical_no: question.canonical_no,
+    group_label: question.group_label,
+    weight: question.weight,
+    booklet_mappings: structuredClone(question.booklet_mappings),
+  }));
+  dom.bookletCodesInput.value = state.form.booklet_codes.join(", ");
+  renderFormTemplateSelect();
+  renderDeviceBookletOverrideSelect();
+  renderQuestionBuilder();
+  renderAnswerKeyStatus();
+  renderImportHint();
+  renderActionStates();
+  setFeedback(`${sourceExamCode} profilindeki soru yapısı mevcut sınava kopyalandı.`, "success");
+}
+
+async function downloadDefinitionTemplate() {
+  const response = await requestBlob("/api/templates/exam-definition-xlsx");
+  const blob = await response.blob();
+  const fileName = parseDownloadFileName(response.headers.get("Content-Disposition"), "akademisyen_sinav_tanim_sablonu_500.xlsx");
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(downloadUrl);
+  setFeedback(`${fileName} indirildi.`, "success");
+}
+
+async function handleDefinitionUpload() {
+  if (state.teacher.isUploadingDefinition) {
+    return;
+  }
+
+  const file = dom.definitionFileInput.files?.[0];
+  if (!file) {
+    throw new Error("Önce tanım Excel dosyası seçilmelidir.");
+  }
+
+  state.teacher.isUploadingDefinition = true;
+  renderActionStates();
+
+  try {
+    syncBookletsFromInput();
+    const draftPayload = collectFormPayload();
+    const savedDraft = await requestJson("/api/exams", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(draftPayload),
+    });
+
+    const formData = new FormData();
+    formData.append("file", file);
+    const detail = await requestJson(`/api/exams/${encodeURIComponent(savedDraft.exam_code)}/definition-file`, {
+      method: "POST",
+      body: formData,
+    });
+
+    await loadExamLibrary();
+    state.currentSession = null;
+    fillForm(detail);
+    const preparationProfile = detail.preparation_profile || {};
+    setStatus("Tanım Excel’i işlendi", "success");
+    setFeedback(
+      preparationProfile.scoring_ready
+        ? `${file.name} otomatik yüklendi. Dosya cevap anahtarını da taşıdığı için optik okutma artık zorunlu değil.`
+        : `${file.name} otomatik yüklendi. Dolu satırlar soru olarak alındı; eksik cevap katmanı optik veya ayrı anahtar dosyasıyla tamamlanabilir.`,
+      "success"
+    );
+  } finally {
+    state.teacher.isUploadingDefinition = false;
+    renderActionStates();
+  }
 }
 
 async function loadExamLibrary() {
@@ -1528,11 +2012,14 @@ async function handleSaveExam() {
   await loadExamLibrary();
   state.currentSession = null;
   fillForm(detail);
+  const preparationProfile = detail.preparation_profile || {};
   setStatus(payload.questions.length ? "Sınav kaydedildi" : "Sınav taslağı kaydedildi", "success");
   setFeedback(
-    payload.questions.length
-      ? "Sınav ve cevap anahtarı kaydedildi. Operatör bu sınavı artık kullanabilir."
-      : "Sınav taslağı kaydedildi. Şimdi cevap anahtarı dosyasını yükleyebilirsin.",
+    preparationProfile.analysis_ready
+      ? "Sınav ve gerekli katmanlar kaydedildi. Puanlama ve analiz final düzeyde hazır."
+      : preparationProfile.scoring_ready
+        ? "Sınav kaydedildi. Puanlama açıldı; eksik metadata varsa analiz başlıkları provizyonel işaretlenecek."
+        : "Sınav taslağı kaydedildi. Şimdi seçilen yöntemin eksik adımlarını tamamlayabilirsin.",
     "success"
   );
 }
@@ -1663,6 +2150,9 @@ function resetForm() {
   state.currentSession = null;
   dom.importFileInput.value = "";
   dom.answerKeyFileInput.value = "";
+  dom.definitionFileInput.value = "";
+  dom.permutationPasteInput.value = "";
+  dom.weightRangeInput.value = "";
   fillForm(null);
   renderActionStates();
 }
@@ -1675,7 +2165,24 @@ function bindEvents() {
   });
   dom.newExamBtn.addEventListener("click", resetForm);
   dom.saveExamBtn.addEventListener("click", () => handleSaveExam().catch(showError));
+  dom.downloadDefinitionTemplateBtn.addEventListener("click", () => downloadDefinitionTemplate().catch(showError));
+  dom.uploadDefinitionFileBtn.addEventListener("click", () => handleDefinitionUpload().catch(showError));
   dom.uploadAnswerKeyBtn.addEventListener("click", () => handleAnswerKeyUpload().catch(showError));
+  dom.applyPermutationBtn.addEventListener("click", () => {
+    try {
+      applyPermutationPaste();
+    } catch (error) {
+      showError(error);
+    }
+  });
+  dom.applyWeightRangesBtn.addEventListener("click", () => {
+    try {
+      applyWeightRanges();
+    } catch (error) {
+      showError(error);
+    }
+  });
+  dom.copyProfileBtn.addEventListener("click", () => copyProfileFromExistingExam().catch(showError));
   dom.readOpticalAnswerKeyBtn.addEventListener("click", () => requestDeviceAnswerKeyRead().catch(showError));
   dom.deviceImportBtn.addEventListener("click", () => requestDeviceImport().catch(showError));
   dom.addQuestionBtn.addEventListener("click", () => {
@@ -1687,6 +2194,12 @@ function bindEvents() {
   });
   dom.bookletCodesInput.addEventListener("change", () => {
     syncBookletsFromInput();
+    renderActionStates();
+  });
+  dom.prepMethodSelect.addEventListener("change", () => {
+    state.form.prep_method_code = dom.prepMethodSelect.value || "manual";
+    renderPrepMethodPanels();
+    renderImportHint();
     renderActionStates();
   });
   dom.runImportBtn.addEventListener("click", () => handleImport().catch(showError));
@@ -1772,6 +2285,26 @@ function bindEvents() {
     renderActionStates();
   });
 
+  dom.definitionFileInput.addEventListener("change", () => {
+    const file = dom.definitionFileInput.files?.[0];
+    const isSaveReady = normalizeToken(dom.examCodeInput.value) && dom.examTitleInput.value.trim().length >= 2;
+    if (!file) {
+      setFeedback("Tanım Excel seçimi temizlendi.", "warn");
+      renderActionStates();
+      return;
+    }
+
+    if (!isSaveReady) {
+      setFeedback(`${file.name} seçildi. Otomatik yükleme için önce sınav kodu ve sınav başlığı doldurulmalıdır.`, "warn");
+      renderActionStates();
+      return;
+    }
+
+    setFeedback(`${file.name} seçildi. Otomatik yükleme başlatılıyor...`, "success");
+    renderActionStates();
+    handleDefinitionUpload().catch(showError);
+  });
+
   document.addEventListener("keydown", handleGlobalCaptureKeydown, true);
 
   dom.importFileInput.addEventListener("change", renderActionStates);
@@ -1788,6 +2321,7 @@ function bindEvents() {
   dom.operatorExamSelect.addEventListener("change", () => {
     selectExam(dom.operatorExamSelect.value).catch(showError);
   });
+  dom.profileSourceExamSelect.addEventListener("change", renderActionStates);
   dom.deviceBookletOverrideSelect.addEventListener("change", renderActionStates);
   dom.operatorExamCodeInput.addEventListener("input", renderActionStates);
 
@@ -1868,6 +2402,9 @@ function bindEvents() {
       state.form[key] = element.value;
       if (key === "exam_code") {
         dom.operatorExamCodeInput.value = normalizeToken(element.value);
+      }
+      if (key === "title") {
+        renderActionStates();
       }
       renderActionStates();
     });

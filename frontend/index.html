@@ -5,7 +5,7 @@
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sınav Okuma Platformu</title>
-  <link rel="stylesheet" href="/static/css/app.css?v=20260413c">
+  <link rel="stylesheet" href="/static/css/app.css?v=20260414a">
 </head>
 <body>
   <div class="page-shell">
@@ -107,7 +107,91 @@
             <select id="formTemplateSelect"></select>
             <small>Kökteki optik_kagit_formatlari presetleri burada listelenir. Varsayılan format seçili gelir; diğer presetleri sınav bazında seçebilirsin.</small>
           </label>
+          <label class="full-span">
+            <span>Hazırlama yöntemi</span>
+            <select id="prepMethodSelect"></select>
+            <small id="prepMethodHelp">Sistem sonraki adımları seçilen yönteme göre açar; yöntemler birbirinin verisini sessizce ezmez.</small>
+          </label>
         </div>
+
+        <section class="hint-card teacher-support-card">
+          <div class="panel-head compact-head">
+            <div>
+              <p class="section-kicker">Yöntem orkestrasyonu</p>
+              <h3>Seçilen prep adımları</h3>
+            </div>
+            <div id="prepMethodStatePill" class="status-pill is-warn">Yöntem seçilmedi</div>
+          </div>
+
+          <p id="prepMethodSummary" class="muted-copy">
+            Önce yöntemi seç. UI yalnız o yöntemin gerekli sonraki adımlarını öne çıkarır.
+          </p>
+
+          <section id="definitionUploadCard" class="method-card" data-method-panel="definition">
+            <div class="panel-head compact-head">
+              <div>
+                <p class="section-kicker">Excel tanım dosyası</p>
+                <h3>Akademisyen Excel’i yükle</h3>
+              </div>
+            </div>
+            <p class="muted-copy">Bu yol, kanonik sıra, grup, ağırlık ve isterse doğru cevapları tek Excel dosyasında toplar. Dosyada doldurulan satır kadar soru işlenir.</p>
+            <div class="operator-grid">
+              <label class="full-span">
+                <span>Tanım Excel dosyası</span>
+                <input id="definitionFileInput" type="file" accept=".xlsx,.xlsm">
+                <small>Türkçe şablon başlıklarıyla doldur. İstersen yalnız A kitapçığını tanımla, istersen sağa yeni kitapçık sütunları ekle.</small>
+              </label>
+            </div>
+            <div class="panel-actions">
+              <button id="downloadDefinitionTemplateBtn" class="secondary-button" type="button">Şablonu indir</button>
+              <button id="uploadDefinitionFileBtn" class="primary-button is-blue" type="button">Yeniden yükle</button>
+            </div>
+            <p class="muted-copy">Dosya seçildiği anda otomatik işlenir. Alttaki buton yalnız aynı dosyayı yeniden denemek istersen kalır. Dosyada cevap anahtarı da doluysa optik cevap anahtarı okutmak zorunlu olmaz. Cevaplar boşsa sistem metadata’yı saklar ve optik/ayrı anahtar bekler.</p>
+          </section>
+
+          <section id="bulkEditCard" class="method-card" data-method-panel="bulk-edit">
+            <div class="panel-head compact-head">
+              <div>
+                <p class="section-kicker">Hızlı yapıştırma</p>
+                <h3>Kitapçık sırası ve blok ağırlık</h3>
+              </div>
+            </div>
+            <p class="muted-copy">Bu yol kitapçık permütasyonunu ve ağırlık bloklarını tek tek kart açmadan toplu uygular. Cevap anahtarını ister optikten ister ayrı dosyadan tamamlayabilirsin.</p>
+            <label class="full-span capture-field">
+              <span>Kitapçık sırası yapıştır</span>
+              <textarea id="permutationPasteInput" rows="5" placeholder="A=1,2,3,4&#10;B=2,1,4,3"></textarea>
+              <small>Her satır bir kitapçık olsun. Satırdaki sıra sayısı kadar kanonik soru üretilir/güncellenir.</small>
+            </label>
+            <label class="full-span capture-field">
+              <span>Ağırlık blokları yapıştır</span>
+              <textarea id="weightRangeInput" rows="5" placeholder="1-20 | Türkçe | 1&#10;21-40 | Matematik | 2"></textarea>
+              <small>Biçim: aralık veya tek soru | grup etiketi | ağırlık</small>
+            </label>
+            <div class="panel-actions">
+              <button id="applyPermutationBtn" class="secondary-button" type="button">Kitapçık sırasını uygula</button>
+              <button id="applyWeightRangesBtn" class="secondary-button" type="button">Ağırlık bloklarını uygula</button>
+            </div>
+          </section>
+
+          <section id="profileCopyCard" class="method-card" data-method-panel="profile-copy">
+            <div class="panel-head compact-head">
+              <div>
+                <p class="section-kicker">Hazır profil</p>
+                <h3>Mevcut bir sınavdan kopyala</h3>
+              </div>
+            </div>
+            <p class="muted-copy">Benzer bir sınav daha önce tanımlandıysa soru yapısını, ağırlıkları ve varsa cevap anahtarını tek adımda kopyalayabilirsin.</p>
+            <div class="operator-grid">
+              <label class="full-span">
+                <span>Kaynak sınav profili</span>
+                <select id="profileSourceExamSelect"></select>
+              </label>
+            </div>
+            <div class="panel-actions">
+              <button id="copyProfileBtn" class="secondary-button" type="button">Profili mevcut sınava uygula</button>
+            </div>
+          </section>
+        </section>
 
         <section class="hint-card teacher-support-card">
           <div class="panel-head compact-head">
@@ -379,6 +463,11 @@
           <div id="assessmentHighlights" class="summary-grid empty-state">Henüz içe aktarma yapılmadı.</div>
         </div>
 
+        <div>
+          <h3>Hazırlık bütünlüğü uyarıları</h3>
+          <div id="analysisIntegrityWarnings" class="summary-grid empty-state">Henüz içe aktarma yapılmadı.</div>
+        </div>
+
         <div class="analytics-columns">
           <div>
             <h3>Kitapçık özeti</h3>
@@ -442,6 +531,6 @@
     </article>
   </template>
 
-  <script src="/static/js/app.js?v=20260413c" type="module"></script>
+  <script src="/static/js/app.js?v=20260414a" type="module"></script>
 </body>
 </html>

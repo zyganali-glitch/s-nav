@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 class BookletMappingInput(BaseModel):
     position: int = Field(ge=1)
-    correct_answer: str = Field(min_length=1)
+    correct_answer: str = ""
 
 
 class QuestionInput(BaseModel):
@@ -24,6 +24,7 @@ class ExamUpsertRequest(BaseModel):
     exam_year: str = ""
     exam_term: str = ""
     exam_type: str = ""
+    prep_method_code: str = Field(default="manual", min_length=1)
     form_template_id: str = Field(default="varsayilan", min_length=1)
     booklet_codes: list[str] = Field(min_length=1)
     questions: list[QuestionInput] = Field(default_factory=list)

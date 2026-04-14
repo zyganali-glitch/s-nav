@@ -4,6 +4,7 @@ import csv
 import io
 import re
 import unicodedata
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -17,8 +18,16 @@ QUESTION_RE = re.compile(r"^(?:Q|S|SORU)?\s*(\d+)$", re.IGNORECASE)
 STUDENT_ID_HEADERS = {"student_id", "ogrenci_no", "ogrencino", "student", "id", "numara"}
 BOOKLET_HEADERS = {"booklet_code", "booklet", "kitapcik", "kitapcik_kodu", "grup", "group"}
 SUMMARY_REPORT_HEADERS = {"dogru", "yanlis", "neti", "puani"}
-FIXED_WIDTH_ANSWER_RE = re.compile(r"([A-E\s]{5,})\s*$", re.IGNORECASE)
+CANONICAL_NO_HEADERS = {"canonical_no", "kanonik_no", "kanonik_soru_no"}
+GROUP_LABEL_HEADERS = {"group_label", "grup", "grup_etiketi", "ders", "bolum"}
+WEIGHT_HEADERS = {"weight", "agirlik", "puan", "soru_agirligi"}
+FIXED_WIDTH_ANSWER_RE = re.compile(r"\s{2,}([A-E\s]{5,})\s*$", re.IGNORECASE)
 FIXED_WIDTH_STUDENT_ID_RE = re.compile(r"\d{5,}")
+FIXED_WIDTH_METADATA_RE = re.compile(r"(?P<sequence>\d{5})(?P<classroom>\d{2})(?P<exam_code>\d{4})(?P<student_suffix>\d{3})")
+DOMINANT_FIXED_WIDTH_EXAM_CODE_RATIO = 0.8
+BOOKLET_POSITION_SUFFIXES = ("position", "sira", "soru_sirasi")
+BOOKLET_ANSWER_SUFFIXES = ("answer", "cevap", "dogru_cevap")
+EXCEL_HEADER_SCORE_ALIASES = CANONICAL_NO_HEADERS | GROUP_LABEL_HEADERS | WEIGHT_HEADERS | BOOKLET_HEADERS | {"answer_key"}
 
 
 def normalize_header(value: Any) -> str:
@@ -33,6 +42,34 @@ def parse_question_headers(headers: list[str]) -> dict[str, str]:
         if match:
             mapping[raw_header] = match.group(1)
     return mapping
+
+
+def resolve_header(headers_by_normalized: dict[str, str], aliases: set[str]) -> str | None:
+    for alias in aliases:
+        if alias in headers_by_normalized:
+            return headers_by_normalized[alias]
+    return None
+
+
+def parse_definition_booklet_columns(headers: list[str]) -> dict[str, dict[str, str]]:
+    booklet_columns: dict[str, dict[str, str]] = {}
+    for raw_header in headers:
+        normalized = normalize_header(raw_header)
+        for suffix in BOOKLET_POSITION_SUFFIXES:
+            suffix_token = f"_{suffix}"
+            if normalized.endswith(suffix_token):
+                booklet_code = normalize_token(normalized[: -len(suffix_token)])
+                if booklet_code:
+                    booklet_columns.setdefault(booklet_code, {})["position"] = raw_header
+                break
+        for suffix in BOOKLET_ANSWER_SUFFIXES:
+            suffix_token = f"_{suffix}"
+            if normalized.endswith(suffix_token):
+                booklet_code = normalize_token(normalized[: -len(suffix_token)])
+                if booklet_code:
+                    booklet_columns.setdefault(booklet_code, {})["answer"] = raw_header
+                break
+    return booklet_columns
 
 
 def sniff_delimiter(sample: str) -> str:
@@ -69,16 +106,58 @@ def read_text_rows(blob: bytes) -> list[dict[str, Any]]:
 
 def read_excel_rows(blob: bytes) -> list[dict[str, Any]]:
     workbook = load_workbook(io.BytesIO(blob), read_only=True, data_only=True)
-    sheet = workbook[workbook.sheetnames[0]]
-    rows = list(sheet.iter_rows(values_only=True))
-    if len(rows) < 2:
+    best_headers: list[str] | None = None
+    best_data_rows: list[tuple[Any, ...]] = []
+    best_score = -1
+
+    for sheet in workbook.worksheets:
+        rows = list(sheet.iter_rows(values_only=True))
+        if len(rows) < 2:
+            continue
+
+        headers = [str(item or "").strip() for item in rows[0]]
+        normalized_headers = {normalize_header(header) for header in headers if str(header or "").strip()}
+        score = sum(1 for header in normalized_headers if header in EXCEL_HEADER_SCORE_ALIASES)
+        score += len(parse_question_headers(headers))
+        score += sum(1 for mapping in parse_definition_booklet_columns(headers).values() if mapping.get("position"))
+
+        if score > best_score:
+            best_headers = headers
+            best_data_rows = rows[1:]
+            best_score = score
+
+    if not best_headers:
         return []
-    headers = [str(item or "").strip() for item in rows[0]]
-    return [{headers[index]: raw_row[index] for index in range(len(headers))} for raw_row in rows[1:]]
+
+    return [{best_headers[index]: raw_row[index] for index in range(len(best_headers))} for raw_row in best_data_rows]
+
+
+def extract_fixed_width_metadata(prefix: str) -> dict[str, str]:
+    match = FIXED_WIDTH_METADATA_RE.search(prefix)
+    if not match:
+        return {}
+
+    metadata: dict[str, str] = {}
+    classroom = match.group("classroom")
+    exam_code = match.group("exam_code")
+    if classroom and classroom != "00":
+        metadata["classroom"] = classroom
+    if exam_code and exam_code != "0000":
+        metadata["exam_code"] = exam_code
+    return metadata
+
+
+def detect_dominant_fixed_width_exam_code(row_metadata: list[dict[str, str]]) -> str:
+    exam_codes = [metadata.get("exam_code", "") for metadata in row_metadata if metadata.get("exam_code")]
+    if len(exam_codes) < 2:
+        return ""
+
+    code, count = Counter(exam_codes).most_common(1)[0]
+    return code if count / len(exam_codes) >= DOMINANT_FIXED_WIDTH_EXAM_CODE_RATIO else ""
 
 
 def parse_fixed_width_vendor_rows(text: str, *, default_booklet_code: str = "") -> list[dict[str, Any]]:
-    parsed_rows: list[dict[str, Any]] = []
+    pending_rows: list[dict[str, Any]] = []
     for index, raw_line in enumerate(text.splitlines(), start=1):
         line = raw_line.rstrip()
         if not line.strip():
@@ -88,8 +167,8 @@ def parse_fixed_width_vendor_rows(text: str, *, default_booklet_code: str = "") 
         if not match:
             continue
 
-        answer_blob = match.group(1).strip().upper()
-        if not answer_blob:
+        answer_blob = match.group(1).upper()
+        if not answer_blob.strip():
             continue
 
         answers = {
@@ -97,16 +176,38 @@ def parse_fixed_width_vendor_rows(text: str, *, default_booklet_code: str = "") 
             for position, token in enumerate(answer_blob, start=1)
             if normalize_answer(token)
         }
-        student_match = FIXED_WIDTH_STUDENT_ID_RE.search(line[: match.start()])
-        parsed_rows.append(
+        prefix = line[: match.start()]
+        student_match = FIXED_WIDTH_STUDENT_ID_RE.search(prefix)
+        pending_rows.append(
             {
                 "student_id": student_match.group(0) if student_match else f"SATIR-{index}",
                 "booklet_code": normalize_token(default_booklet_code),
                 "answers": answers,
                 "question_count": len(answer_blob),
                 "source_row": index,
+                "fixed_width_metadata": extract_fixed_width_metadata(prefix),
             }
         )
+
+    dominant_exam_code = detect_dominant_fixed_width_exam_code(
+        [row.get("fixed_width_metadata") or {} for row in pending_rows]
+    )
+
+    parsed_rows: list[dict[str, Any]] = []
+    for row in pending_rows:
+        metadata = row.pop("fixed_width_metadata", {})
+        decoded_fields: dict[str, str] = {}
+        classroom = metadata.get("classroom", "")
+        if classroom:
+            decoded_fields["classroom"] = classroom
+        if dominant_exam_code:
+            decoded_fields["exam_code"] = dominant_exam_code
+        elif metadata.get("exam_code"):
+            decoded_fields["exam_code"] = metadata["exam_code"]
+
+        if decoded_fields:
+            row["decoded_fields"] = decoded_fields
+        parsed_rows.append(row)
 
     if not parsed_rows:
         raise ValueError("Header'siz sabit-genislik TXT icinde soru-cevap verisi bulunamadi.")
@@ -146,19 +247,22 @@ def parse_tabular_student_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any
 def build_questions_from_mapping_rows(rows: list[dict[str, Any]], booklet_codes: list[str]) -> list[dict[str, Any]]:
     headers = list(rows[0].keys()) if rows else []
     normalized_headers = {normalize_header(header): header for header in headers}
-    if "canonical_no" not in normalized_headers:
+    canonical_header = resolve_header(normalized_headers, CANONICAL_NO_HEADERS)
+    group_header = resolve_header(normalized_headers, GROUP_LABEL_HEADERS)
+    weight_header = resolve_header(normalized_headers, WEIGHT_HEADERS)
+    if not canonical_header:
         raise ValueError("Detayli cevap anahtari dosyasinda canonical_no kolonu zorunludur.")
 
     questions: list[dict[str, Any]] = []
     for row in rows:
-        canonical_no = int(row.get(normalized_headers["canonical_no"]) or 0)
+        canonical_no = int(row.get(canonical_header) or 0)
         if canonical_no <= 0:
             raise ValueError("Detayli cevap anahtarinda canonical_no pozitif olmalidir.")
 
         question = {
             "canonical_no": canonical_no,
-            "group_label": str(row.get(normalized_headers.get("group_label", ""), "") or "Genel").strip() or "Genel",
-            "weight": float(row.get(normalized_headers.get("weight", ""), 1) or 1),
+            "group_label": str(row.get(group_header or "", "") or "Genel").strip() or "Genel",
+            "weight": float(row.get(weight_header or "", 1) or 1),
             "booklet_mappings": {},
         }
 
@@ -176,6 +280,139 @@ def build_questions_from_mapping_rows(rows: list[dict[str, Any]], booklet_codes:
         questions.append(question)
 
     return questions
+
+
+def row_has_definition_content(
+    row: dict[str, Any],
+    canonical_header: str | None,
+    group_header: str | None,
+    weight_header: str | None,
+    booklet_columns: dict[str, dict[str, str]],
+) -> bool:
+    candidate_headers = [
+        canonical_header or "",
+        group_header or "",
+        weight_header or "",
+    ]
+    for mapping in booklet_columns.values():
+        candidate_headers.append(mapping.get("position", ""))
+        candidate_headers.append(mapping.get("answer", ""))
+
+    return any(str(row.get(header) or "").strip() for header in candidate_headers if header)
+
+
+def build_questions_from_definition_rows(
+    rows: list[dict[str, Any]],
+    booklet_codes: list[str],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    headers = list(rows[0].keys()) if rows else []
+    normalized_headers = {normalize_header(header): header for header in headers}
+    canonical_header = resolve_header(normalized_headers, CANONICAL_NO_HEADERS)
+    group_header = resolve_header(normalized_headers, GROUP_LABEL_HEADERS)
+    weight_header = resolve_header(normalized_headers, WEIGHT_HEADERS)
+    if not canonical_header:
+        raise ValueError("Excel tanim dosyasinda canonical_no kolonu zorunludur.")
+
+    detected_booklet_columns = parse_definition_booklet_columns(headers)
+    detected_booklet_codes = [code for code, mapping in detected_booklet_columns.items() if mapping.get("position")]
+    if not detected_booklet_codes:
+        detected_booklet_codes = [normalize_token(code) for code in booklet_codes if normalize_token(code)]
+        detected_booklet_columns = {
+            booklet_code: {
+                "position": normalized_headers.get(f"{normalize_header(booklet_code)}_position", ""),
+                "answer": normalized_headers.get(f"{normalize_header(booklet_code)}_answer", ""),
+            }
+            for booklet_code in detected_booklet_codes
+        }
+
+    if not detected_booklet_codes:
+        raise ValueError("Excel tanim dosyasinda en az bir kitapcik icin *_sira veya *_position kolonu bulunmalidir.")
+
+    processed_rows = [
+        row for row in rows if row_has_definition_content(row, canonical_header, group_header, weight_header, detected_booklet_columns)
+    ]
+    if not processed_rows:
+        raise ValueError("Excel tanim dosyasinda islenecek dolu soru satiri bulunamadi.")
+
+    questions: list[dict[str, Any]] = []
+    seen_canonical: set[int] = set()
+    weight_source = "explicit"
+    any_answer_present = False
+    all_answers_complete = True
+
+    for row_index, row in enumerate(processed_rows, start=2):
+        canonical_raw = row.get(canonical_header)
+        if str(canonical_raw or "").strip() == "":
+            raise ValueError(f"Excel taniminda {row_index}. satirda canonical_no bos birakilamaz.")
+
+        try:
+            canonical_no = int(canonical_raw)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"Excel taniminda {row_index}. satirdaki canonical_no sayi olmalidir.") from error
+
+        if canonical_no <= 0:
+            raise ValueError("Excel taniminda canonical_no pozitif olmalidir.")
+        if canonical_no in seen_canonical:
+            raise ValueError(f"Excel taniminda ayni canonical_no iki kez kullanildi: {canonical_no}")
+        seen_canonical.add(canonical_no)
+
+        raw_weight = row.get(weight_header or "", "")
+        if str(raw_weight or "").strip() == "":
+            weight_value = 1.0
+            weight_source = "defaulted"
+        else:
+            try:
+                weight_value = float(raw_weight)
+            except (TypeError, ValueError) as error:
+                raise ValueError(f"Excel taniminda {canonical_no}. sorunun agirligi sayi olmalidir.") from error
+        if weight_value <= 0:
+            raise ValueError(f"Excel taniminda {canonical_no}. soru icin agirlik sifirdan buyuk olmalidir.")
+
+        question = {
+            "canonical_no": canonical_no,
+            "group_label": str(row.get(group_header or "", "") or "Genel").strip() or "Genel",
+            "weight": weight_value,
+            "booklet_mappings": {},
+        }
+
+        for booklet_code in detected_booklet_codes:
+            column_mapping = detected_booklet_columns.get(booklet_code) or {}
+            position_header = column_mapping.get("position", "")
+            answer_header = column_mapping.get("answer", "")
+            if not position_header:
+                raise ValueError(f"Excel taniminda {booklet_code} kitapcigi icin position kolonu eksik.")
+
+            raw_position = row.get(position_header)
+            if str(raw_position or "").strip() == "":
+                raise ValueError(f"Excel taniminda {canonical_no}. soru / {booklet_code} kitapcigi position bos birakilamaz.")
+            try:
+                position_value = int(raw_position)
+            except (TypeError, ValueError) as error:
+                raise ValueError(f"Excel taniminda {canonical_no}. soru / {booklet_code} kitapcigi position sayi olmalidir.") from error
+            if position_value <= 0:
+                raise ValueError(f"Excel taniminda {canonical_no}. soru / {booklet_code} kitapcigi position pozitif olmalidir.")
+
+            correct_answer = normalize_answer(row.get(answer_header or "", ""))
+            if correct_answer:
+                any_answer_present = True
+            else:
+                all_answers_complete = False
+
+            question["booklet_mappings"][booklet_code] = {
+                "position": position_value,
+                "correct_answer": correct_answer,
+            }
+
+        questions.append(question)
+
+    questions.sort(key=lambda item: item["canonical_no"])
+    return questions, {
+        "booklet_codes": detected_booklet_codes,
+        "question_count": len(questions),
+        "canonical_mapping_source": "explicit",
+        "weight_source": weight_source,
+        "answer_source": "file" if all_answers_complete else ("partial-file" if any_answer_present else "missing"),
+    }
 
 
 def build_questions_from_sequential_rows(rows: list[dict[str, Any]], booklet_codes: list[str]) -> list[dict[str, Any]]:
@@ -302,3 +539,22 @@ async def parse_answer_key_upload(upload: UploadFile, booklet_codes: list[str]) 
     raise ValueError(
         "Cevap anahtari formati taninamadi. Detayli mapping icin canonical_no/A_position/A_answer; pratik format icin booklet_code ve Q1...Qn kullanin."
     )
+
+
+async def parse_definition_upload(upload: UploadFile, booklet_codes: list[str]) -> tuple[list[dict[str, Any]], dict[str, Any], str]:
+    blob = await upload.read()
+    suffix = Path(upload.filename or "").suffix.lower()
+    normalized_booklets = [normalize_token(code) for code in booklet_codes if normalize_token(code)]
+
+    if suffix in {".xlsx", ".xlsm"}:
+        rows = read_excel_rows(blob)
+        import_format = "definition-excel"
+    else:
+        rows = read_text_rows(blob)
+        import_format = "definition-text"
+
+    if not rows:
+        raise ValueError("Tanim dosyasinda islenecek satir bulunamadi.")
+
+    questions, profile = build_questions_from_definition_rows(rows, normalized_booklets)
+    return questions, profile, import_format

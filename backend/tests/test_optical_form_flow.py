@@ -6,7 +6,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.main import create_app
-from backend.app.optical_form_service import decode_sheet, get_answer_regions, get_named_field_regions, parse_form_template
+from backend.app.optical_form_service import (
+    decode_sheet,
+    get_answer_regions,
+    get_named_field_regions,
+    parse_form_template,
+    relaxed_candidate_is_safe,
+)
 
 
 ANSWER_BLOCKS = [
@@ -252,6 +258,36 @@ def test_decode_sheet_accepts_single_faint_answer_mark() -> None:
     assert decoded["answers"]["3"] == "C"
 
 
+def test_decode_sheet_blanks_adjacent_near_tie_instead_of_silent_wrong_answer() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    template = parse_form_template(project_root, "varsayilan")
+    matrix = build_matrix("AACDE", booklet_code="A")
+
+    start_row, _, start_column, pattern = ANSWER_BLOCKS[0]
+    question_row = start_row - 1 + 2
+    matrix[question_row][start_column - 1 + pattern.index("C")] = 11
+    matrix[question_row][start_column - 1 + pattern.index("B")] = 12
+
+    decoded = decode_sheet(
+        {"sheet_no": 1, "front_matrix": matrix},
+        template,
+        {"booklet_codes": ["A"]},
+        threshold=12,
+    )
+
+    assert "3" not in decoded["answers"]
+    assert any("komsu siklar" in warning for warning in decoded["warnings"])
+
+
+def test_relaxed_candidate_cannot_override_existing_answer_or_booklet() -> None:
+    base_candidate = {"booklet_code": "C", "answers": {"3": "C", "4": "D"}}
+    conflicting_relaxed = {"booklet_code": "B", "answers": {"3": "B", "4": "D", "5": "A"}}
+    additive_relaxed = {"booklet_code": "C", "answers": {"3": "C", "4": "D", "5": "A"}}
+
+    assert relaxed_candidate_is_safe(base_candidate, conflicting_relaxed) is False
+    assert relaxed_candidate_is_safe(base_candidate, additive_relaxed) is True
+
+
 def test_decode_sheet_extracts_student_number_from_vertical_digit_block() -> None:
     project_root = Path(__file__).resolve().parents[2]
     template = parse_form_template(project_root, "varsayilan")
@@ -288,8 +324,14 @@ def test_decode_sheet_extracts_auxiliary_identity_fields_from_named_regions() ->
         value="VELI",
         pattern="".join(named_regions["student_surname"]["choices"]),
     )
-    mark_vertical_field(matrix, start_row=23, start_column=31, value="12", pattern="0123456789")
-    mark_vertical_field(matrix, start_row=23, start_column=34, value="A", pattern="ABCDEFGHIJ")
+    mark_vertical_field(
+        matrix,
+        start_row=named_regions["class_number"]["start_row"],
+        start_column=named_regions["class_number"]["start_column"],
+        value="0012",
+        pattern="".join(named_regions["class_number"]["choices"]),
+        reverse_columns=True,
+    )
 
     decoded = decode_sheet(
         {"sheet_no": 1, "front_matrix": matrix},
@@ -301,10 +343,13 @@ def test_decode_sheet_extracts_auxiliary_identity_fields_from_named_regions() ->
     assert decoded["decoded_fields"]["student_name"] == "ALI"
     assert decoded["decoded_fields"]["student_surname"] == "VELI"
     assert decoded["decoded_fields"]["student_full_name"] == "ALI VELI"
-    assert decoded["decoded_fields"]["classroom"] == "12A"
+    assert named_regions["class_number"]["end_column"] == 34
+    assert decoded["decoded_fields"]["class_number"] == "0012"
+    assert "class_section" not in decoded["decoded_fields"]
+    assert decoded["decoded_fields"]["classroom"] == "0012"
 
 
-def test_decode_sheet_extracts_exam_code_and_exam_date_from_virtual_right_panel_regions() -> None:
+def test_decode_sheet_extracts_exam_code_and_exam_date_from_auxiliary_blocks() -> None:
     project_root = Path(__file__).resolve().parents[2]
     template = parse_form_template(project_root, "varsayilan")
     named_regions = get_named_field_regions(template)
@@ -321,29 +366,33 @@ def test_decode_sheet_extracts_exam_code_and_exam_date_from_virtual_right_panel_
         matrix,
         start_row=named_regions["exam_code_number"]["start_row"],
         start_column=named_regions["exam_code_number"]["start_column"],
-        value="001",
+        value="601",
         pattern="".join(named_regions["exam_code_number"]["choices"]),
+        reverse_columns=True,
     )
     mark_vertical_field(
         matrix,
         start_row=named_regions["exam_date_day"]["start_row"],
         start_column=named_regions["exam_date_day"]["start_column"],
-        value="11",
+        value="09",
         pattern="".join(named_regions["exam_date_day"]["choices"]),
+        reverse_columns=True,
     )
     mark_vertical_field(
         matrix,
         start_row=named_regions["exam_date_month"]["start_row"],
         start_column=named_regions["exam_date_month"]["start_column"],
-        value="01",
+        value="04",
         pattern="".join(named_regions["exam_date_month"]["choices"]),
+        reverse_columns=True,
     )
     mark_vertical_field(
         matrix,
         start_row=named_regions["exam_date_year"]["start_row"],
         start_column=named_regions["exam_date_year"]["start_column"],
-        value="1990",
+        value="2026",
         pattern="".join(named_regions["exam_date_year"]["choices"]),
+        reverse_columns=True,
     )
 
     decoded = decode_sheet(
@@ -353,8 +402,90 @@ def test_decode_sheet_extracts_exam_code_and_exam_date_from_virtual_right_panel_
         threshold=12,
     )
 
-    assert decoded["decoded_fields"]["exam_code"] == "A001"
+    assert named_regions["exam_code_prefix"]["start_column"] == 45
+    assert named_regions["exam_code_number"]["start_column"] == 42
+    assert named_regions["exam_date_year"]["start_column"] == 33
+    assert named_regions["exam_date_day"]["start_column"] == 39
+    assert decoded["decoded_fields"]["exam_code_prefix"] == "A"
+    assert decoded["decoded_fields"]["exam_code_number"] == "601"
+    assert decoded["decoded_fields"]["exam_code"] == "A601"
+    assert decoded["decoded_fields"]["exam_date_day"] == "09"
+    assert decoded["decoded_fields"]["exam_date_month"] == "04"
+    assert decoded["decoded_fields"]["exam_date_year"] == "2026"
+    assert decoded["decoded_fields"]["exam_date"] == "09.04.2026"
+
+
+def test_decode_sheet_recovers_exam_date_when_single_year_digit_is_faint() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    template = parse_form_template(project_root, "varsayilan")
+    named_regions = get_named_field_regions(template)
+    matrix = build_matrix("ABCDE", booklet_code="A")
+
+    mark_vertical_field(
+        matrix,
+        start_row=named_regions["exam_date_day"]["start_row"],
+        start_column=named_regions["exam_date_day"]["start_column"],
+        value="11",
+        pattern="".join(named_regions["exam_date_day"]["choices"]),
+        reverse_columns=True,
+    )
+    mark_vertical_field(
+        matrix,
+        start_row=named_regions["exam_date_month"]["start_row"],
+        start_column=named_regions["exam_date_month"]["start_column"],
+        value="01",
+        pattern="".join(named_regions["exam_date_month"]["choices"]),
+        reverse_columns=True,
+    )
+    mark_vertical_field(
+        matrix,
+        start_row=named_regions["exam_date_year"]["start_row"],
+        start_column=named_regions["exam_date_year"]["start_column"],
+        value="1990",
+        pattern="".join(named_regions["exam_date_year"]["choices"]),
+        reverse_columns=True,
+    )
+
+    faint_year_row = named_regions["exam_date_year"]["end_row"]
+    faint_year_column = named_regions["exam_date_year"]["start_column"] + 2
+    matrix[faint_year_row - 1][faint_year_column - 1] = 11
+
+    decoded = decode_sheet(
+        {"sheet_no": 1, "front_matrix": matrix},
+        template,
+        {"booklet_codes": ["A"]},
+        threshold=12,
+    )
+
+    assert decoded["decoded_fields"]["exam_date_year"] == "1990"
     assert decoded["decoded_fields"]["exam_date"] == "11.01.1990"
+
+
+def test_decode_sheet_does_not_soft_guess_classroom_from_weak_marks() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    template = parse_form_template(project_root, "varsayilan")
+    matrix = build_matrix("ABCDE", booklet_code="A")
+
+    named_regions = get_named_field_regions(template)
+    mark_vertical_field(
+        matrix,
+        start_row=named_regions["class_number"]["start_row"],
+        start_column=named_regions["class_number"]["start_column"],
+        value="0012",
+        pattern="".join(named_regions["class_number"]["choices"]),
+        reverse_columns=True,
+        marked_value=11,
+    )
+
+    decoded = decode_sheet(
+        {"sheet_no": 1, "front_matrix": matrix},
+        template,
+        {"booklet_codes": ["A"]},
+        threshold=12,
+    )
+
+    assert "class_number" not in decoded["decoded_fields"]
+    assert "classroom" not in decoded["decoded_fields"]
 
 
 def test_default_template_maps_surname_block_before_name_block() -> None:
@@ -892,7 +1023,7 @@ def test_device_answer_key_endpoint_relaxes_threshold_for_weak_mark_d_booklet(
 
     payload = response.json()
     assert payload["processed_booklets"] == ["D"]
-    assert payload["decoded_sheets"][0]["analysis_threshold_used"] == 11
+    assert payload["decoded_sheets"][0]["analysis_threshold_used"] == 12
     assert payload["decoded_sheets"][0]["answers"] == {
         "1": "E",
         "2": "D",
@@ -900,7 +1031,7 @@ def test_device_answer_key_endpoint_relaxes_threshold_for_weak_mark_d_booklet(
         "4": "E",
         "5": "C",
     }
-    assert "zayif isaretler geri kazanildi" in payload["decoded_sheets"][0]["warnings"][-1]
+    assert not any("zayif isaretler geri kazanildi" in warning for warning in payload["decoded_sheets"][0]["warnings"])
 
 
 def test_device_import_endpoint_scores_mixed_booklets_in_single_pass(
@@ -958,3 +1089,50 @@ def test_device_answer_key_endpoint_rejects_sparse_non_contiguous_decode_with_di
     response = client.post("/api/exams/OPTIK01/device-answer-key", json={"settings": {"analysis_threshold": 12}})
     assert response.status_code == 400
     assert "Cihaz verisi geldi ancak cevap anahtari Q1'den baslamiyor" in response.json()["detail"]
+
+
+def test_decode_sheet_correctly_decodes_device_flipped_matrix() -> None:
+    """SR3500 sends matrix bottom-first; decode_sheet must flip and decode correctly."""
+    template = parse_form_template(Path(__file__).resolve().parent.parent.parent, "varsayilan")
+    exam = {"booklet_codes": ["A", "B", "C", "D"], "questions": []}
+
+    # Build a correct-orientation matrix with known answers and booklet
+    answer_key = "ABCDE"
+    booklet_code = "C"
+    correct_matrix = build_matrix(answer_key, booklet_code=booklet_code)
+    mark_student_number(correct_matrix, "05367246543")
+
+    # Simulate device output: flip the matrix vertically (device sends bottom-first)
+    device_matrix = list(reversed(correct_matrix))
+
+    sheet = {"sheet_no": 1, "front_matrix": device_matrix}
+    decoded = decode_sheet(sheet, template, exam, threshold=12)
+
+    # Must pick flip_vertical
+    assert decoded["matrix_orientation"] == "flip_vertical"
+    assert decoded["matrix_orientation_corrected"] is True
+
+    # Answers must be correct
+    answers = decoded["answers"]
+    for pos, expected in enumerate(answer_key, start=1):
+        assert answers.get(str(pos)) == expected, f"Q{pos}: expected {expected}, got {answers.get(str(pos))}"
+
+    # Booklet must be detected
+    assert decoded["booklet_code"] == booklet_code
+
+    # Student number must be decoded
+    assert decoded["decoded_fields"].get("student_number") == "05367246543"
+
+
+def test_decode_sheet_prefers_flip_vertical_in_tie() -> None:
+    """When both orientations score equally, flip_vertical should win."""
+    template = parse_form_template(Path(__file__).resolve().parent.parent.parent, "varsayilan")
+    exam = {"booklet_codes": [], "questions": []}
+
+    # Empty matrix - both orientations produce the same (blank) result
+    empty_matrix = [[0 for _ in range(48)] for _ in range(65)]
+    sheet = {"sheet_no": 1, "front_matrix": empty_matrix}
+    decoded = decode_sheet(sheet, template, exam, threshold=12)
+
+    # Flip should be preferred when tied
+    assert decoded["matrix_orientation"] == "flip_vertical"

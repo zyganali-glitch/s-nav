@@ -10,10 +10,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .device_service import build_device_payload_from_raw_text, parse_mark_output_detailed, read_mark_sheet
-from .exam_service import build_answer_key_profile, build_exam_detail, compute_import_session, normalize_exam_payload, normalize_token, summarize_exam
+from .exam_service import build_answer_key_profile, build_exam_detail, compute_import_session, exam_scoring_ready, normalize_exam_payload, normalize_token, summarize_exam
 from .export_service import build_session_export, resolve_session
 from .form_template_service import list_form_templates, resolve_form_template, slugify_form_template_name
-from .import_service import parse_answer_key_upload, parse_upload_file
+from .import_service import parse_answer_key_upload, parse_definition_upload, parse_upload_file
 from .optical_form_service import apply_optical_answer_keys, decode_exam_sheets, decode_sheet, parse_form_template
 from .schemas import DeviceAnswerKeyReadRequest, DeviceImportRequest, DeviceReadRequest, ExamUpsertRequest
 from .storage import JsonStateStore
@@ -22,6 +22,7 @@ from .storage import JsonStateStore
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 DEFAULT_DATA_FILE = PROJECT_ROOT / "backend" / "data" / "app_state.json"
+EXAM_DEFINITION_TEMPLATE_FILE = PROJECT_ROOT / "docs" / "akademisyen_sinav_tanim_sablonu_500.xlsx"
 
 
 def form_template_catalog() -> list[dict[str, Any]]:
@@ -36,7 +37,7 @@ def get_exam_or_404(store: JsonStateStore, exam_code: str) -> dict[str, Any]:
 
 
 def ensure_answer_key_ready(exam: dict[str, Any]) -> None:
-    if not exam.get("questions"):
+    if not exam_scoring_ready(exam):
         raise HTTPException(status_code=400, detail="Cevap anahtari yuklenmeden ogrenci cevaplari puanlanamaz.")
 
 
@@ -160,6 +161,12 @@ def create_app(state_file: Path | None = None) -> FastAPI:
     def get_form_templates() -> dict[str, object]:
         return {"items": form_template_catalog()}
 
+    @app.get("/api/templates/exam-definition-xlsx")
+    def get_exam_definition_template() -> FileResponse:
+        if not EXAM_DEFINITION_TEMPLATE_FILE.exists():
+            raise HTTPException(status_code=404, detail="Excel sablonu bulunamadi.")
+        return FileResponse(EXAM_DEFINITION_TEMPLATE_FILE, filename=EXAM_DEFINITION_TEMPLATE_FILE.name)
+
     @app.get("/api/exams")
     def list_exams() -> dict[str, object]:
         return {"items": [summarize_exam(item) for item in store.list_exams()]}
@@ -198,6 +205,10 @@ def create_app(state_file: Path | None = None) -> FastAPI:
         exam = get_exam_or_404(store, exam_code)
         try:
             questions, import_format, booklet_strategy = await parse_answer_key_upload(file, exam.get("booklet_codes", []))
+            booklet_codes = exam.get("booklet_codes", [])
+            canonical_mapping_source = "explicit" if import_format == "answer-key-mapping" else (
+                "single-booklet-sequential" if len(booklet_codes) == 1 else "inferred-sequential"
+            )
             answer_key_profile = build_answer_key_profile(
                 source_type="file-upload",
                 source_label="Cevap anahtari dosyasi",
@@ -205,6 +216,9 @@ def create_app(state_file: Path | None = None) -> FastAPI:
                 import_format=import_format,
                 booklet_strategy=booklet_strategy,
                 source_file=file.filename or "answer-key",
+                canonical_mapping_source=canonical_mapping_source,
+                weight_source="explicit" if import_format == "answer-key-mapping" else "defaulted",
+                answer_source="file",
             )
             updated_exam = normalize_exam_payload(
                 {
@@ -214,6 +228,7 @@ def create_app(state_file: Path | None = None) -> FastAPI:
                     "exam_year": exam.get("exam_year", ""),
                     "exam_term": exam.get("exam_term", ""),
                     "exam_type": exam.get("exam_type", ""),
+                    "prep_method_code": exam.get("prep_method_code", "manual"),
                     "form_template_id": exam.get("form_template_id", "varsayilan"),
                     "booklet_codes": exam.get("booklet_codes", []),
                     "questions": questions,
@@ -226,6 +241,47 @@ def create_app(state_file: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
         updated_exam["optical_answer_key_booklets"] = {}
+        saved = store.upsert_exam(updated_exam)
+        return build_exam_detail(saved)
+
+    @app.post("/api/exams/{exam_code}/definition-file")
+    async def upload_definition_file(exam_code: str, file: UploadFile = File(...)) -> dict[str, object]:
+        exam = get_exam_or_404(store, exam_code)
+        try:
+            questions, definition_profile, import_format = await parse_definition_upload(file, exam.get("booklet_codes", []))
+            resolved_booklet_codes = definition_profile.get("booklet_codes") or exam.get("booklet_codes", [])
+            answer_key_profile = build_answer_key_profile(
+                source_type="definition-file",
+                source_label="Excel sinav tanim dosyasi",
+                question_count=len(questions),
+                import_format=import_format,
+                booklet_strategy="detailed",
+                source_file=file.filename or "definition-file",
+                canonical_mapping_source=definition_profile.get("canonical_mapping_source", "explicit"),
+                weight_source=definition_profile.get("weight_source", "explicit"),
+                answer_source=definition_profile.get("answer_source", "missing"),
+            )
+            updated_exam = normalize_exam_payload(
+                {
+                    "exam_code": exam["exam_code"],
+                    "title": exam["title"],
+                    "description": exam.get("description", ""),
+                    "exam_year": exam.get("exam_year", ""),
+                    "exam_term": exam.get("exam_term", ""),
+                    "exam_type": exam.get("exam_type", ""),
+                    "prep_method_code": exam.get("prep_method_code", "manual"),
+                    "form_template_id": exam.get("form_template_id", "varsayilan"),
+                    "booklet_codes": resolved_booklet_codes,
+                    "questions": questions,
+                },
+                existing_exam=exam,
+                form_template_catalog=form_template_catalog(),
+                answer_key_profile=answer_key_profile,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+        updated_exam["optical_answer_key_booklets"] = deepcopy(exam.get("optical_answer_key_booklets") or {})
         saved = store.upsert_exam(updated_exam)
         return build_exam_detail(saved)
 
