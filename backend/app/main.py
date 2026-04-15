@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .device_service import build_device_payload_from_raw_text, parse_mark_output_detailed, read_mark_sheet
+from .definition_template_service import DEFINITION_TEMPLATE_FILENAME, build_exam_definition_template_xlsx
 from .exam_service import build_answer_key_profile, build_exam_detail, compute_import_session, exam_scoring_ready, normalize_exam_payload, normalize_token, summarize_exam
 from .export_service import build_session_export, resolve_session
 from .form_template_service import list_form_templates, resolve_form_template, slugify_form_template_name
@@ -22,7 +23,6 @@ from .storage import JsonStateStore
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 DEFAULT_DATA_FILE = PROJECT_ROOT / "backend" / "data" / "app_state.json"
-EXAM_DEFINITION_TEMPLATE_FILE = PROJECT_ROOT / "docs" / "akademisyen_sinav_tanim_sablonu_500.xlsx"
 
 
 def form_template_catalog() -> list[dict[str, Any]]:
@@ -162,10 +162,14 @@ def create_app(state_file: Path | None = None) -> FastAPI:
         return {"items": form_template_catalog()}
 
     @app.get("/api/templates/exam-definition-xlsx")
-    def get_exam_definition_template() -> FileResponse:
-        if not EXAM_DEFINITION_TEMPLATE_FILE.exists():
-            raise HTTPException(status_code=404, detail="Excel sablonu bulunamadi.")
-        return FileResponse(EXAM_DEFINITION_TEMPLATE_FILE, filename=EXAM_DEFINITION_TEMPLATE_FILE.name)
+    def get_exam_definition_template() -> Response:
+        payload = build_exam_definition_template_xlsx()
+        headers = {"Content-Disposition": f'attachment; filename="{DEFINITION_TEMPLATE_FILENAME}"'}
+        return Response(
+            content=payload,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers=headers,
+        )
 
     @app.get("/api/exams")
     def list_exams() -> dict[str, object]:

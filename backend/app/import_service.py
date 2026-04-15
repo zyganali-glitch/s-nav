@@ -89,6 +89,26 @@ def decode_bytes(blob: bytes) -> str:
     return blob.decode("utf-8", errors="ignore")
 
 
+def parse_localized_float(value: Any) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError("bos")
+
+    normalized = text.replace(" ", "")
+    if "," in normalized and "." in normalized:
+        if normalized.rfind(",") > normalized.rfind("."):
+            normalized = normalized.replace(".", "").replace(",", ".")
+        else:
+            normalized = normalized.replace(",", "")
+    elif "," in normalized:
+        normalized = normalized.replace(".", "").replace(",", ".")
+
+    return float(normalized)
+
+
 def is_fixed_width_candidate(text: str) -> bool:
     first_line = next((line.strip("\ufeff") for line in text.splitlines() if line.strip()), "")
     if not first_line:
@@ -262,7 +282,7 @@ def build_questions_from_mapping_rows(rows: list[dict[str, Any]], booklet_codes:
         question = {
             "canonical_no": canonical_no,
             "group_label": str(row.get(group_header or "", "") or "Genel").strip() or "Genel",
-            "weight": float(row.get(weight_header or "", 1) or 1),
+            "weight": parse_localized_float(row.get(weight_header or "", 1) or 1),
             "booklet_mappings": {},
         }
 
@@ -362,7 +382,7 @@ def build_questions_from_definition_rows(
             weight_source = "defaulted"
         else:
             try:
-                weight_value = float(raw_weight)
+                weight_value = parse_localized_float(raw_weight)
             except (TypeError, ValueError) as error:
                 raise ValueError(f"Excel taniminda {canonical_no}. sorunun agirligi sayi olmalidir.") from error
         if weight_value <= 0:

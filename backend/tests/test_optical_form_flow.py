@@ -1,17 +1,23 @@
 from __future__ import annotations
 
+import io
+import json
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from openpyxl import Workbook
 
 from backend.app.main import create_app
 from backend.app.optical_form_service import (
+    build_low_confidence_decode_error,
+    choose_preferred_field_variant,
     decode_sheet,
     get_answer_regions,
     get_named_field_regions,
     parse_form_template,
     relaxed_candidate_is_safe,
+    score_decoded_sheet_candidate,
 )
 
 
@@ -65,6 +71,26 @@ def build_four_booklet_exam_payload() -> dict[str, object]:
         "booklet_codes": ["A", "B", "C", "D"],
         "questions": [],
     }
+
+
+def build_definition_workbook(rows: list[list[object]]) -> bytes:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Sablon"
+    sheet.append([
+        "kanonik_no",
+        "grup_etiketi",
+        "agirlik",
+        "A_sira",
+        "A_cevap",
+        "B_sira",
+        "B_cevap",
+    ])
+    for row in rows:
+        sheet.append(row)
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
 
 
 def build_matrix(answer_key: str, booklet_code: str = "A", marked_value: int = 16) -> list[list[int]]:
@@ -143,6 +169,16 @@ def mark_vertical_field(
 
 def flip_matrix_vertical(matrix: list[list[int]]) -> list[list[int]]:
     return list(reversed(matrix))
+
+
+def add_outside_block_noise(
+    matrix: list[list[int]],
+    positions: list[tuple[int, int]],
+    marked_value: int = 16,
+) -> list[list[int]]:
+    for row_index, column_index in positions:
+        matrix[row_index - 1][column_index - 1] = marked_value
+    return matrix
 
 
 def build_raw_text(matrices: list[list[list[int]]]) -> str:
@@ -288,6 +324,150 @@ def test_relaxed_candidate_cannot_override_existing_answer_or_booklet() -> None:
     assert relaxed_candidate_is_safe(base_candidate, additive_relaxed) is True
 
 
+def test_bsr_template_uses_template_specific_named_field_regions() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    template = parse_form_template(project_root, "bsr-katipcelebi-snf")
+
+    named_regions = get_named_field_regions(template)
+
+    assert named_regions["student_number"]["start_column"] == 34
+    assert named_regions["student_number"]["end_column"] == 45
+    assert named_regions["class_number"]["start_column"] == 31
+    assert named_regions["class_number"]["end_column"] == 34
+    assert named_regions["student_surname"]["start_column"] == 8
+    assert named_regions["student_surname"]["end_column"] == 16
+    assert named_regions["student_name"]["start_column"] == 21
+    assert named_regions["student_name"]["end_column"] == 30
+    assert named_regions["exam_date_day"]["start_row"] == 45
+    assert named_regions["exam_date_month"]["start_row"] == 46
+    assert named_regions["exam_date_year"]["start_row"] == 44
+
+
+def test_score_decoded_sheet_candidate_penalizes_answers_outside_expected_question_range() -> None:
+    exam = build_single_booklet_exam_payload()
+    exam["questions"] = [
+        {
+            "canonical_no": index,
+            "group_label": "Genel",
+            "weight": 1.0,
+            "booklet_mappings": {"A": {"position": index, "correct_answer": "A"}},
+        }
+        for index in range(1, 6)
+    ]
+
+    aligned_candidate = {
+        "booklet_code": "A",
+        "answers": {"1": "A", "4": "D", "5": "C"},
+        "decoded_fields": {
+            "student_number": "4067865120",
+            "class_number": "0321",
+            "exam_date_day": "15",
+            "exam_date_month": "04",
+            "exam_date_year": "2026",
+            "student_name": "AYDEMIR",
+            "student_surname": "ASLAN",
+        },
+        "decoded_question_count": 3,
+        "diagnostics": {
+            "answer_region_candidate_mark_count": 3,
+            "outside_candidate_mark_count": 67,
+        },
+        "matrix_orientation": "flip_vertical",
+    }
+    noisy_out_of_range_candidate = {
+        "booklet_code": "A",
+        "answers": {"25": "E", "29": "C", "38": "C", "44": "A", "48": "B", "67": "E", "89": "D"},
+        "decoded_fields": {
+            "student_number": "700",
+            "student_name": "UT",
+        },
+        "decoded_question_count": 7,
+        "diagnostics": {
+            "answer_region_candidate_mark_count": 7,
+            "outside_candidate_mark_count": 92,
+        },
+        "matrix_orientation": "as_is",
+    }
+
+    assert score_decoded_sheet_candidate(aligned_candidate, exam) > score_decoded_sheet_candidate(
+        noisy_out_of_range_candidate,
+        exam,
+    )
+
+
+def test_choose_preferred_field_variant_prefers_default_reverse_when_scores_tie() -> None:
+    candidates_by_region = {
+        "student_name": [
+            {
+                "base_score": (0, 7, 7, 0),
+                "row_shift": 0,
+                "reverse_columns": True,
+                "default_reverse_columns": True,
+                "decoded_tokens": list("AYDEMIR"),
+            },
+            {
+                "base_score": (0, 7, 7, 0),
+                "row_shift": 0,
+                "reverse_columns": False,
+                "default_reverse_columns": True,
+                "decoded_tokens": list("RIMEDYA"),
+            },
+        ],
+        "student_surname": [
+            {
+                "base_score": (0, 5, 5, 0),
+                "row_shift": 0,
+                "reverse_columns": True,
+                "default_reverse_columns": True,
+                "decoded_tokens": list("ASLAN"),
+            },
+            {
+                "base_score": (0, 5, 5, 0),
+                "row_shift": 0,
+                "reverse_columns": False,
+                "default_reverse_columns": True,
+                "decoded_tokens": list("NALSA"),
+            },
+        ],
+    }
+
+    assert choose_preferred_field_variant(candidates_by_region) == (0, True)
+
+
+def test_low_confidence_gate_allows_structured_identity_rich_decode() -> None:
+    exam = build_single_booklet_exam_payload()
+    exam["questions"] = [
+        {
+            "canonical_no": index,
+            "group_label": "Genel",
+            "weight": 1.0,
+            "booklet_mappings": {"A": {"position": index, "correct_answer": "A"}},
+        }
+        for index in range(1, 6)
+    ]
+    decoded_sheet = {
+        "booklet_code": "A",
+        "answers": {"1": "A", "4": "D", "5": "C"},
+        "decoded_fields": {
+            "student_number": "4067865120",
+            "student_name": "AYDEMIR",
+            "student_surname": "ASLAN",
+            "student_full_name": "AYDEMIR ASLAN",
+            "class_number": "0321",
+            "classroom": "0321",
+            "exam_date": "15.04.2026",
+        },
+        "diagnostics": {
+            "total_candidate_mark_count": 102,
+            "answer_region_candidate_mark_count": 3,
+            "named_field_candidate_mark_count": 32,
+            "outside_candidate_mark_count": 67,
+        },
+    }
+
+    assert build_low_confidence_decode_error(decoded_sheet, exam) is None
+
+
 def test_decode_sheet_extracts_student_number_from_vertical_digit_block() -> None:
     project_root = Path(__file__).resolve().parents[2]
     template = parse_form_template(project_root, "varsayilan")
@@ -302,6 +482,35 @@ def test_decode_sheet_extracts_student_number_from_vertical_digit_block() -> Non
 
     assert decoded["student_id"] == "12345678901"
     assert decoded["decoded_fields"]["student_number"] == "12345678901"
+
+
+def test_decode_sheet_recovers_faint_identity_digits_in_numeric_named_fields() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    template = parse_form_template(project_root, "varsayilan")
+    named_regions = get_named_field_regions(template)
+    matrix = build_matrix("ABCDE", booklet_code="A")
+    mark_student_number(matrix, "12345678901")
+    mark_vertical_field(
+        matrix,
+        start_row=named_regions["class_number"]["start_row"],
+        start_column=named_regions["class_number"]["start_column"],
+        value="0123",
+        pattern="0123456789",
+        reverse_columns=True,
+    )
+
+    matrix[23][44] = 11
+    matrix[22][33] = 11
+
+    decoded = decode_sheet(
+        {"sheet_no": 1, "front_matrix": matrix},
+        template,
+        {"booklet_codes": ["A"]},
+        threshold=12,
+    )
+
+    assert decoded["decoded_fields"]["student_number"] == "12345678901"
+    assert decoded["decoded_fields"]["class_number"] == "0123"
 
 
 def test_decode_sheet_extracts_auxiliary_identity_fields_from_named_regions() -> None:
@@ -746,6 +955,37 @@ def test_device_import_endpoint_accepts_previously_captured_raw_matrix_without_r
     assert session["student_preview"][0]["score"] == 3.0
 
 
+def test_device_import_endpoint_blocks_low_confidence_decode_instead_of_materializing_fake_student(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    save_response = client.post("/api/exams", json=build_single_booklet_exam_payload())
+    assert save_response.status_code == 200
+
+    answer_key_raw = build_raw_text([build_matrix("ABCDE")])
+    noisy_student_matrix = build_matrix("ABCDE")
+    mark_student_number(noisy_student_matrix, "12345678901")
+    add_outside_block_noise(
+        noisy_student_matrix,
+        [(row_index, 48) for row_index in range(1, 25)],
+    )
+    noisy_student_raw = build_raw_text([flip_matrix_vertical(noisy_student_matrix)])
+    payloads = [build_device_payload(answer_key_raw, 1), build_device_payload(noisy_student_raw, 1)]
+
+    def fake_read_mark_sheet(*args, **kwargs):
+        return payloads.pop(0)
+
+    monkeypatch.setattr("backend.app.main.read_mark_sheet", fake_read_mark_sheet)
+
+    key_response = client.post("/api/exams/OPTIK01/device-answer-key", json={"settings": {"analysis_threshold": 12}})
+    assert key_response.status_code == 200
+
+    import_response = client.post("/api/exams/OPTIK01/device-import", json={"settings": {"analysis_threshold": 12}})
+    assert import_response.status_code == 400
+    assert "beklenen cevap/kimlik bloklarinin disinda" in import_response.json()["detail"]
+    assert "guvenilir cozulmedi" in import_response.json()["detail"]
+
+
 def test_device_endpoints_accept_form_template_override_and_keep_decoded_student_number(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -802,6 +1042,272 @@ def test_multi_booklet_optical_answer_key_can_be_stored_partially_until_all_book
     assert exam["summary"]["question_count"] == 0
     assert exam["summary"]["optical_answer_key_ready_count"] == 1
     assert exam["answer_key_profile"]["pending_booklets"] == ["B"]
+
+
+def test_hybrid_excel_optical_preserves_definition_metadata_sources_after_optical_read(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    save_response = client.post(
+        "/api/exams",
+        json={
+            **build_multi_booklet_exam_payload(),
+            "prep_method_code": "hybrid-excel-optical",
+        },
+    )
+    assert save_response.status_code == 200
+
+    workbook_blob = build_definition_workbook(
+        [
+            [1, "Matematik", 10, 1, "", 2, ""],
+            [2, "Fen", 5, 2, "", 1, ""],
+        ]
+    )
+    definition_response = client.post(
+        "/api/exams/OPTIK02/definition-file",
+        files={
+            "file": (
+                "definition.xlsx",
+                workbook_blob,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+    assert definition_response.status_code == 200
+    assert definition_response.json()["answer_key_profile"]["canonical_mapping_source"] == "explicit"
+    assert definition_response.json()["answer_key_profile"]["weight_source"] == "explicit"
+
+    raw_text = build_raw_text([
+        build_matrix("AD", booklet_code="A"),
+        build_matrix("DA", booklet_code="B"),
+    ])
+
+    def fake_read_mark_sheet(*args, **kwargs):
+        return build_device_payload(raw_text, 2)
+
+    monkeypatch.setattr("backend.app.main.read_mark_sheet", fake_read_mark_sheet)
+
+    response = client.post(
+        "/api/exams/OPTIK02/device-answer-key",
+        json={"settings": {"analysis_threshold": 12, "max_sheets": 0}},
+    )
+    assert response.status_code == 200
+
+    exam = response.json()["exam"]
+    preparation_profile = exam["preparation_profile"]
+    warning_codes = {item["code"] for item in preparation_profile["warnings"]}
+
+    assert exam["answer_key_profile"]["source_type"] == "hybrid-definition-optical"
+    assert exam["answer_key_profile"]["canonical_mapping_source"] == "explicit"
+    assert exam["answer_key_profile"]["weight_source"] == "explicit"
+    assert exam["answer_key_profile"]["answer_source"] == "optical"
+    assert exam["answer_key_profile"]["metadata_import_format"] == "definition-excel"
+    assert exam["summary"]["scoring_ready"] is True
+    assert exam["summary"]["analysis_ready"] is True
+    assert "inferred_canonical_mapping" not in warning_codes
+    assert "defaulted_weights" not in warning_codes
+    assert exam["questions"][0]["booklet_mappings"]["A"] == {"position": 1, "correct_answer": "A"}
+    assert exam["questions"][0]["booklet_mappings"]["B"] == {"position": 2, "correct_answer": "A"}
+    assert exam["questions"][1]["booklet_mappings"]["A"] == {"position": 2, "correct_answer": "D"}
+    assert exam["questions"][1]["booklet_mappings"]["B"] == {"position": 1, "correct_answer": "D"}
+
+
+def test_paste_ranges_preserves_manual_metadata_sources_after_optical_read_and_import(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    save_response = client.post(
+        "/api/exams",
+        json={
+            "exam_code": "optik05",
+            "title": "Paste Ranges Metadata",
+            "description": "manuel sira ve agirlik metadata akisi",
+            "prep_method_code": "paste-ranges",
+            "form_template_id": "varsayilan",
+            "booklet_codes": ["A", "B"],
+            "questions": [
+                {
+                    "canonical_no": 1,
+                    "group_label": "Blok-1",
+                    "weight": 3.5,
+                    "booklet_mappings": {
+                        "A": {"position": 1, "correct_answer": ""},
+                        "B": {"position": 2, "correct_answer": ""},
+                    },
+                },
+                {
+                    "canonical_no": 2,
+                    "group_label": "Blok-1",
+                    "weight": 1.5,
+                    "booklet_mappings": {
+                        "A": {"position": 2, "correct_answer": ""},
+                        "B": {"position": 1, "correct_answer": ""},
+                    },
+                },
+            ],
+        },
+    )
+    assert save_response.status_code == 200
+    saved_exam = save_response.json()
+    assert saved_exam["answer_key_profile"]["canonical_mapping_source"] == "explicit"
+    assert saved_exam["answer_key_profile"]["weight_source"] == "explicit"
+
+    answer_key_raw = build_raw_text([
+        build_matrix("AD", booklet_code="A"),
+        build_matrix("DA", booklet_code="B"),
+    ])
+    student_raw = build_raw_text([build_matrix("AE", booklet_code="A")])
+    payloads = [build_device_payload(answer_key_raw, 2), build_device_payload(student_raw, 1)]
+
+    def fake_read_mark_sheet(*args, **kwargs):
+        return payloads.pop(0)
+
+    monkeypatch.setattr("backend.app.main.read_mark_sheet", fake_read_mark_sheet)
+
+    key_response = client.post(
+        "/api/exams/OPTIK05/device-answer-key",
+        json={"settings": {"analysis_threshold": 12, "max_sheets": 0}},
+    )
+    assert key_response.status_code == 200
+
+    exam = key_response.json()["exam"]
+    preparation_profile = exam["preparation_profile"]
+    warning_codes = {item["code"] for item in preparation_profile["warnings"]}
+
+    assert exam["answer_key_profile"]["source_type"] == "hybrid-metadata-optical"
+    assert exam["answer_key_profile"]["canonical_mapping_source"] == "explicit"
+    assert exam["answer_key_profile"]["weight_source"] == "explicit"
+    assert exam["answer_key_profile"]["answer_source"] == "optical"
+    assert exam["answer_key_profile"]["metadata_import_format"] == "manual"
+    assert exam["summary"]["analysis_ready"] is True
+    assert "inferred_canonical_mapping" not in warning_codes
+    assert "defaulted_weights" not in warning_codes
+    assert exam["questions"][0]["weight"] == 3.5
+    assert exam["questions"][1]["weight"] == 1.5
+    assert exam["questions"][0]["booklet_mappings"]["A"] == {"position": 1, "correct_answer": "A"}
+    assert exam["questions"][0]["booklet_mappings"]["B"] == {"position": 2, "correct_answer": "A"}
+    assert exam["questions"][1]["booklet_mappings"]["A"] == {"position": 2, "correct_answer": "D"}
+    assert exam["questions"][1]["booklet_mappings"]["B"] == {"position": 1, "correct_answer": "D"}
+
+    import_response = client.post(
+        "/api/exams/OPTIK05/device-import",
+        json={"settings": {"analysis_threshold": 12}},
+    )
+    assert import_response.status_code == 200
+
+    session = import_response.json()["session"]
+    assert session["analysis_integrity"]["canonical_mapping_source"] == "explicit"
+    assert session["analysis_integrity"]["weight_source"] == "explicit"
+    assert session["analysis_integrity"]["warnings"] == []
+    assert session["student_results"][0]["score"] == 3.5
+    assert session["student_results"][0]["weighted_percent"] == 70.0
+    assert session["question_summary"][0]["weight"] == 3.5
+    assert session["question_summary"][1]["weight"] == 1.5
+
+
+@pytest.mark.parametrize("prep_method_code", ["paste-ranges", "manual"])
+def test_paste_ranges_heals_stale_profile_and_session_warnings_from_existing_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    prep_method_code: str,
+) -> None:
+    state_path = tmp_path / "app_state.json"
+    app = create_app(state_path)
+    client = TestClient(app)
+
+    save_response = client.post(
+        "/api/exams",
+        json={
+            "exam_code": "optik06",
+            "title": "Paste Ranges Healing",
+            "description": "stale profile recovery",
+            "prep_method_code": prep_method_code,
+            "form_template_id": "varsayilan",
+            "booklet_codes": ["A", "B"],
+            "questions": [
+                {
+                    "canonical_no": 1,
+                    "group_label": "Blok-1",
+                    "weight": 3.5,
+                    "booklet_mappings": {
+                        "A": {"position": 1, "correct_answer": "A"},
+                        "B": {"position": 2, "correct_answer": "A"},
+                    },
+                },
+                {
+                    "canonical_no": 2,
+                    "group_label": "Blok-1",
+                    "weight": 1.5,
+                    "booklet_mappings": {
+                        "A": {"position": 2, "correct_answer": "D"},
+                        "B": {"position": 1, "correct_answer": "D"},
+                    },
+                },
+            ],
+        },
+    )
+    assert save_response.status_code == 200
+
+    csv_payload = "student_id,booklet_code,Q1,Q2\n1001,A,A,E\n"
+    import_response = client.post(
+        "/api/exams/OPTIK06/imports",
+        files={"file": ("answers.csv", csv_payload, "text/csv")},
+    )
+    assert import_response.status_code == 200
+
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    exam = state["exams"]["OPTIK06"]
+    exam["answer_key_profile"]["source_type"] = "optical-read"
+    exam["answer_key_profile"]["canonical_mapping_source"] = "inferred-sequential"
+    exam["answer_key_profile"]["weight_source"] = "defaulted"
+    exam["answer_key_profile"]["answer_source"] = "optical"
+    exam["sessions"][0]["analysis_integrity"] = {
+        "prep_method_code": prep_method_code,
+        "question_count": 2,
+        "has_positions": True,
+        "has_answers": True,
+        "has_weights": True,
+        "scoring_ready": True,
+        "analysis_ready": False,
+        "status": "provisional",
+        "canonical_mapping_source": "inferred-sequential",
+        "weight_source": "defaulted",
+        "answer_source": "optical",
+        "warnings": [
+            {
+                "code": "inferred_canonical_mapping",
+                "severity": "warning",
+                "title": "Kitapçık sırası ayrıca doğrulanmadı",
+                "message": "Kitapçık sırası ayrı bir tanım kaynağından gelmediği için soru bazlı yorumları ön bilgi olarak değerlendirin.",
+            },
+            {
+                "code": "defaulted_weights",
+                "severity": "warning",
+                "title": "Soru puanları eşit kabul edildi",
+                "message": "Soru ağırlıkları ayrıca tanımlanmadığı için puan ve yüzde hesapları eşit ağırlıkla yapıldı.",
+            },
+        ],
+        "affected_columns": {
+            "summary_cards": ["Ortalama puan", "Ort. yüzde"],
+            "booklet_table": ["Toplam puan"],
+            "group_table": ["Toplam puan"],
+            "question_table": ["Kitapçık sırası", "Anahtar", "Ağırlık"],
+            "question_choice_table": ["Kitapçık sırası", "Anahtar", "Ağırlık"],
+            "student_table": ["Puan", "Yüzde", "Net"],
+        },
+    }
+    state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    detail_response = client.get("/api/exams/OPTIK06")
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+
+    assert detail["preparation_profile"]["canonical_mapping_source"] == "explicit"
+    assert detail["preparation_profile"]["weight_source"] == "explicit"
+    assert detail["preparation_profile"]["warnings"] == []
+    assert detail["recent_sessions"][0]["analysis_integrity"]["canonical_mapping_source"] == "explicit"
+    assert detail["recent_sessions"][0]["analysis_integrity"]["weight_source"] == "explicit"
+    assert detail["recent_sessions"][0]["analysis_integrity"]["warnings"] == []
 
 
 def test_device_answer_key_endpoint_materializes_last_pending_booklet_when_only_one_unassigned_sheet_remains(

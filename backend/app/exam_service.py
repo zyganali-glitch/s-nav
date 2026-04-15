@@ -388,6 +388,40 @@ def question_has_answers(question: dict[str, Any], booklet_codes: list[str]) -> 
     return True
 
 
+def has_explicit_canonical_mapping_evidence(exam: dict[str, Any], booklet_codes: list[str], questions: list[dict[str, Any]]) -> bool:
+    prep_method_code = str(exam.get("prep_method_code") or "manual").strip() or "manual"
+    if prep_method_code == "paste-ranges":
+        return True
+    if prep_method_code != "manual" or len(booklet_codes) <= 1:
+        return False
+
+    for question in questions:
+        canonical_no = int(question.get("canonical_no") or 0)
+        booklet_mappings = question.get("booklet_mappings") or {}
+        for booklet_code in booklet_codes:
+            position = int((booklet_mappings.get(booklet_code) or {}).get("position") or 0)
+            if position > 0 and canonical_no > 0 and position != canonical_no:
+                return True
+    return False
+
+
+def has_explicit_weight_evidence(exam: dict[str, Any], questions: list[dict[str, Any]]) -> bool:
+    prep_method_code = str(exam.get("prep_method_code") or "manual").strip() or "manual"
+    if prep_method_code == "paste-ranges":
+        return True
+    if prep_method_code != "manual":
+        return False
+
+    for question in questions:
+        weight = float(question.get("weight") or 0)
+        if weight > 0 and abs(weight - 1.0) > 1e-9:
+            return True
+        group_label = str(question.get("group_label") or "").strip()
+        if group_label and group_label.lower() != "genel":
+            return True
+    return False
+
+
 def hydrate_questions_from_optical_answers(
     questions: list[dict[str, Any]],
     booklet_codes: list[str],
@@ -433,6 +467,11 @@ def build_preparation_profile(exam: dict[str, Any]) -> dict[str, Any]:
     weight_source = str(answer_key_profile.get("weight_source") or ("explicit" if question_count else "missing"))
     answer_source = str(answer_key_profile.get("answer_source") or ("manual" if has_answers else "missing"))
 
+    if has_positions and has_explicit_canonical_mapping_evidence(exam, booklet_codes, questions):
+        canonical_mapping_source = "explicit"
+    if has_weights and has_explicit_weight_evidence(exam, questions):
+        weight_source = "explicit"
+
     warnings: list[dict[str, Any]] = []
     affected_columns: dict[str, list[str]] = {
         "summary_cards": [],
@@ -448,8 +487,8 @@ def build_preparation_profile(exam: dict[str, Any]) -> dict[str, Any]:
             {
                 "code": "missing_answer_layer",
                 "severity": "error",
-                "title": "Puanlama icin cevap anahtari tamamlanmadi",
-                "message": "Bu sinavda soru siralari kayitli olsa bile tum kitapciklar icin dogru cevaplar tamamlanmadan ogrenci puanlamasi acilmaz.",
+                "title": "Cevap anahtarı henüz tamamlanmadı",
+                "message": "Soru sıraları hazır olsa bile tüm kitapçıkların doğru cevapları tamamlanmadan puanlama açılamaz.",
             }
         )
 
@@ -458,8 +497,8 @@ def build_preparation_profile(exam: dict[str, Any]) -> dict[str, Any]:
             {
                 "code": "inferred_canonical_mapping",
                 "severity": "warning",
-                "title": "Kitapcik permutasyonu kanonik olarak teyit edilmedi",
-                "message": "Cok kitapcikli sinavda kitapcik sirasi explicit kaynak yerine hizli/inferred yontemden geldigi icin soru bazli kanonik yorumlar provizyonel kabul edilmelidir.",
+                "title": "Kitapçık sırası ayrıca doğrulanmadı",
+                "message": "Kitapçık sırası ayrı bir tanım kaynağından gelmediği için soru bazlı yorumları ön bilgi olarak değerlendirin.",
             }
         )
         affected_columns["question_table"].extend(["Kitapçık sırası", "Anahtar"])
@@ -470,8 +509,8 @@ def build_preparation_profile(exam: dict[str, Any]) -> dict[str, Any]:
             {
                 "code": "defaulted_weights",
                 "severity": "warning",
-                "title": "Soru agirliklari varsayilan degerde",
-                "message": "Agirlik kolonu explicit kaynaktan gelmedigi icin puan ve yuzde tabanli analizler varsayilan agirliklarla hesaplandi.",
+                "title": "Soru puanları eşit kabul edildi",
+                "message": "Soru ağırlıkları ayrıca tanımlanmadığı için puan ve yüzde hesapları eşit ağırlıkla yapıldı.",
             }
         )
         affected_columns["summary_cards"].extend(["Ortalama puan", "Ort. yüzde"])
@@ -1230,11 +1269,26 @@ def rebuild_parsed_rows_from_session(session: dict[str, Any]) -> list[dict[str, 
 
 
 def enrich_session_for_reporting(exam: dict[str, Any], session: dict[str, Any]) -> dict[str, Any]:
+    current_analysis_integrity = build_preparation_profile(exam)
+    stored_answer_key_profile = exam.get("answer_key_profile") or {}
+    refresh_analysis_integrity = (
+        str(stored_answer_key_profile.get("canonical_mapping_source") or "") != current_analysis_integrity.get("canonical_mapping_source")
+        or str(stored_answer_key_profile.get("weight_source") or "") != current_analysis_integrity.get("weight_source")
+    )
+
     if not session_needs_reporting_upgrade(session):
+        if refresh_analysis_integrity:
+            hydrated = deepcopy(session)
+            hydrated["analysis_integrity"] = current_analysis_integrity
+            return hydrated
         return deepcopy(session)
 
     parsed_rows = rebuild_parsed_rows_from_session(session)
     if not parsed_rows:
+        if refresh_analysis_integrity:
+            hydrated = deepcopy(session)
+            hydrated["analysis_integrity"] = current_analysis_integrity
+            return hydrated
         return deepcopy(session)
 
     net_policy_code = (session.get("net_policy") or {}).get("code") or (session.get("summary") or {}).get("net_policy_code")

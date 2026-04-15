@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -348,6 +349,44 @@ def test_definition_excel_with_answers_removes_optical_requirement(client: TestC
     assert detail["questions"][1]["booklet_mappings"]["A"]["correct_answer"] == "D"
 
 
+def test_definition_excel_accepts_comma_decimal_weights(client: TestClient) -> None:
+    save_response = client.post("/api/exams", json=build_draft_exam_payload())
+    assert save_response.status_code == 200
+
+    workbook_blob = build_definition_workbook(
+        [
+            [1, "Matematik", "3,33", 1, "A", 2, "A"],
+            [2, "Fen", "1,67", 2, "D", 1, "D"],
+        ]
+    )
+    response = client.post(
+        "/api/exams/TASLAK01/definition-file",
+        files={
+            "file": (
+                "definition.xlsx",
+                workbook_blob,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail["questions"][0]["weight"] == 3.33
+    assert detail["questions"][1]["weight"] == 1.67
+
+
+def test_exam_save_accepts_decimal_weight_values(client: TestClient) -> None:
+    payload = build_exam_payload()
+    payload["questions"][0]["weight"] = 3.33
+
+    response = client.post("/api/exams", json=payload)
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail["questions"][0]["weight"] == 3.33
+
+
 def test_definition_excel_accepts_instruction_first_workbook(client: TestClient) -> None:
     save_response = client.post("/api/exams", json=build_draft_exam_payload())
     assert save_response.status_code == 200
@@ -440,6 +479,10 @@ def test_exam_definition_template_endpoint_returns_xlsx_signature(client: TestCl
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     assert response.content.startswith(b"PK")
+    workbook = load_workbook(io.BytesIO(response.content), read_only=True)
+    assert workbook.sheetnames[:2] == ["Kullanim", "Sablon"]
+    assert "İZMİR KÂTİP ÇELEBİ ÜNİVERSİTESİ" in str(workbook["Kullanim"]["A1"].value)
+    assert workbook["Sablon"]["A1"].value == "kanonik_no"
 
 
 def test_single_booklet_fixed_width_answer_key_upload_is_accepted(client: TestClient) -> None:
@@ -516,9 +559,9 @@ def test_exam_can_be_deleted_from_library(client: TestClient) -> None:
 @pytest.mark.parametrize(
     ("export_format", "expected_media_type", "expected_prefix"),
     [
-        ("csv", "text/csv; charset=utf-8", "\ufeffRapor Bolumu,Genel Ozet"),
-        ("txt", "text/plain; charset=utf-8", "Genel Ozet"),
-        ("json", "application/json; charset=utf-8", '{\n  "exam"'),
+        ("csv", "text/csv; charset=utf-8", "\ufeffRapor Basligi,İZMİR KÂTİP ÇELEBİ ÜNİVERSİTESİ SINAV SONUÇ RAPORU"),
+        ("txt", "text/plain; charset=utf-8", "İZMİR KÂTİP ÇELEBİ ÜNİVERSİTESİ SINAV SONUÇ RAPORU"),
+        ("json", "application/json; charset=utf-8", '{\n  "report_title": "İZMİR KÂTİP ÇELEBİ ÜNİVERSİTESİ SINAV SONUÇ RAPORU"'),
     ],
 )
 def test_session_exports_return_downloadable_payloads(
@@ -543,7 +586,8 @@ def test_session_exports_return_downloadable_payloads(
     assert response.text.startswith(expected_prefix)
     if export_format in {"csv", "txt"}:
         assert "Kitapcik Ozeti" in response.text
-        assert "Ogrenci Cevap Matrisi" in response.text
+        assert "Ogrenci Cevap Matrisi (Kanonik soru)" in response.text
+        assert "Ogrenci Cevap Matrisi (Form pozisyonu)" in response.text
         assert "Rapor Metodolojisi ve Terim Aciklamalari" in response.text
         assert "Sinava Ozel Akademik Yorum" in response.text
         assert "Sorulara Siklara Gore Verilen Cevaplarin Dagilimi" in response.text
@@ -632,6 +676,7 @@ def test_exports_force_ltr_mark_for_classroom_form_code_and_form_date(tmp_path: 
 
     csv_response = client.get("/api/exams/DENEME01/exports/csv?session_id=latest")
     assert csv_response.status_code == 200
+    assert "İZMİR KÂTİP ÇELEBİ ÜNİVERSİTESİ SINAV SONUÇ RAPORU" in csv_response.text
     assert "\u200e001A" in csv_response.text
     assert "\u200eANKET01" in csv_response.text
     assert "\u200e13.04.2026" in csv_response.text
@@ -640,9 +685,10 @@ def test_exports_force_ltr_mark_for_classroom_form_code_and_form_date(tmp_path: 
     assert xlsx_response.status_code == 200
     workbook = load_workbook(io.BytesIO(xlsx_response.content), read_only=True)
     sheet = workbook["Ogrenci Onizlemi"]
-    assert sheet["E3"].value == "\u200e001A"
-    assert sheet["G3"].value == "\u200eANKET01"
-    assert sheet["H3"].value == "\u200e13.04.2026"
+    assert sheet["A1"].value == "İZMİR KÂTİP ÇELEBİ ÜNİVERSİTESİ SINAV SONUÇ RAPORU"
+    assert sheet["E4"].value == "\u200e001A"
+    assert sheet["G4"].value == "\u200eANKET01"
+    assert sheet["H4"].value == "\u200e13.04.2026"
 
 
 def test_exports_include_exam_metadata_and_remove_report_noise(client: TestClient) -> None:
@@ -656,6 +702,7 @@ def test_exports_include_exam_metadata_and_remove_report_noise(client: TestClien
 
     csv_response = client.get("/api/exams/DENEME01/exports/csv?session_id=latest")
     assert csv_response.status_code == 200
+    assert "Rapor Basligi,İZMİR KÂTİP ÇELEBİ ÜNİVERSİTESİ SINAV SONUÇ RAPORU" in csv_response.text
     assert "Sinav yili,2026" in csv_response.text
     assert "Donem,Bahar" in csv_response.text
     assert "Sinav turu,Vize" in csv_response.text
@@ -667,6 +714,7 @@ def test_exports_include_exam_metadata_and_remove_report_noise(client: TestClien
 
     txt_response = client.get("/api/exams/DENEME01/exports/txt?session_id=latest")
     assert txt_response.status_code == 200
+    assert "İZMİR KÂTİP ÇELEBİ ÜNİVERSİTESİ SINAV SONUÇ RAPORU" in txt_response.text
     assert "Sinav yili" in txt_response.text
     assert "Donem" in txt_response.text
     assert "Sinav turu" in txt_response.text
@@ -674,6 +722,81 @@ def test_exports_include_exam_metadata_and_remove_report_noise(client: TestClien
     assert "Olusturma" in txt_response.text
     assert "+00:00" not in txt_response.text
     assert "Cevap ozeti" not in txt_response.text
+
+
+def test_exports_surface_preparation_warnings_and_mark_affected_headers(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "app_state.json")
+    client = TestClient(app)
+
+    client.post("/api/exams", json=build_exam_payload())
+    csv_payload = "student_id,booklet_code,Q1,Q2\n1001,A,A,D\n1002,B,D,A\n"
+    import_response = client.post(
+        "/api/exams/DENEME01/imports",
+        files={"file": ("answers.csv", csv_payload, "text/csv")},
+    )
+    assert import_response.status_code == 200
+
+    state_path = tmp_path / "app_state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    session = state["exams"]["DENEME01"]["sessions"][0]
+    session["analysis_integrity"] = {
+        "status": "provisional",
+        "warnings": [
+            {
+                "code": "inferred_canonical_mapping",
+                "severity": "warning",
+                "title": "Kitapcik permutasyonu kanonik olarak teyit edilmedi",
+                "message": "Cok kitapcikli sinavda kitapcik sirasi explicit kaynak yerine hizli/inferred yontemden geldigi icin soru bazli kanonik yorumlar provizyonel kabul edilmelidir.",
+            },
+            {
+                "code": "defaulted_weights",
+                "severity": "warning",
+                "title": "Soru agirliklari varsayilan degerde",
+                "message": "Agirlik kolonu explicit kaynaktan gelmedigi icin puan ve yuzde tabanli analizler varsayilan agirliklarla hesaplandi.",
+            },
+        ],
+        "affected_columns": {
+            "summary_cards": ["Ortalama puan", "Ort. yüzde"],
+            "booklet_table": ["Toplam puan", "Toplam net", "Ort. puan", "Maks.", "Ort. net"],
+            "group_table": ["Toplam puan", "Toplam net", "Ort. puan", "Maks.", "Ort. net"],
+            "question_table": ["Ağırlık", "Kitapçık sırası", "Anahtar"],
+            "question_choice_table": ["Ağırlık", "Kitapçık sırası", "Anahtar"],
+            "student_table": ["Puan", "Yüzde", "Net"],
+        },
+    }
+    state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    csv_response = client.get("/api/exams/DENEME01/exports/csv?session_id=latest")
+    assert csv_response.status_code == 200
+    assert "Hazırlık Bütünlüğü Uyarıları" in csv_response.text
+    assert "Kitapçık sırası ayrıca doğrulanmadı" in csv_response.text
+    assert "Soru puanları eşit kabul edildi" in csv_response.text
+    assert "Bu raporda dikkat edilecek başlıklar: Genel özet: Ortalama puan, Ort. yüzde" in csv_response.text
+
+    xlsx_response = client.get("/api/exams/DENEME01/exports/xlsx?session_id=latest")
+    assert xlsx_response.status_code == 200
+    workbook = load_workbook(io.BytesIO(xlsx_response.content))
+
+    warning_sheet = workbook["Hazırlık Bütünlüğü Uyarıları"]
+    assert warning_sheet["A2"].value == "Hazırlık Bütünlüğü Uyarıları"
+    assert warning_sheet["A4"].value == "Kitapçık sırası ayrıca doğrulanmadı"
+
+    summary_sheet = workbook["Genel Ozet"]
+    warning_label_cell = next(
+        summary_sheet.cell(row=row_index, column=1)
+        for row_index in range(4, summary_sheet.max_row + 1)
+        if summary_sheet.cell(row=row_index, column=1).value == "Ortalama puan"
+    )
+    assert str(warning_label_cell.font.color.rgb).endswith("B42318")
+
+    question_sheet = workbook["Soru Bazlı Dağılım"]
+    header_positions = {
+        question_sheet.cell(row=3, column=column_index).value: column_index
+        for column_index in range(1, question_sheet.max_column + 1)
+    }
+    assert str(question_sheet.cell(row=3, column=header_positions["Ağırlık"]).fill.fgColor.rgb).endswith("B42318")
+    assert str(question_sheet.cell(row=3, column=header_positions["Kitapçık sırası"]).fill.fgColor.rgb).endswith("B42318")
+    assert str(question_sheet.cell(row=3, column=header_positions["Anahtar"]).fill.fgColor.rgb).endswith("B42318")
 
 
 @pytest.mark.parametrize(
@@ -684,7 +807,13 @@ def test_exports_include_exam_metadata_and_remove_report_noise(client: TestClien
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             b"PK",
         ),
+        (
+            "ods",
+            "application/vnd.oasis.opendocument.spreadsheet",
+            b"PK",
+        ),
         ("pdf", "application/pdf", b"%PDF"),
+        ("zip", "application/zip", b"PK"),
     ],
 )
 def test_binary_session_exports_return_expected_file_signatures(
@@ -706,3 +835,37 @@ def test_binary_session_exports_return_expected_file_signatures(
     assert response.status_code == 200
     assert response.headers["content-type"].startswith(content_type_prefix)
     assert response.content.startswith(signature)
+
+
+def test_zip_export_contains_requested_formats(client: TestClient) -> None:
+    client.post("/api/exams", json=build_exam_payload())
+    csv_payload = "student_id,booklet_code,Q1,Q2\n1001,A,A,D\n1002,B,D,A\n"
+    import_response = client.post(
+        "/api/exams/DENEME01/imports",
+        files={"file": ("answers.csv", csv_payload, "text/csv")},
+    )
+    assert import_response.status_code == 200
+
+    response = client.get("/api/exams/DENEME01/exports/zip?session_id=latest")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/zip")
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+        archived_names = set(archive.namelist())
+        assert any(name.endswith(".csv") for name in archived_names)
+        assert any(name.endswith(".xlsx") for name in archived_names)
+        assert any(name.endswith(".ods") for name in archived_names)
+        assert any(name.endswith(".pdf") for name in archived_names)
+        assert any(name.endswith(".txt") for name in archived_names)
+        assert any(name.endswith(".json") for name in archived_names)
+
+        csv_name = next(name for name in archived_names if name.endswith(".csv"))
+        pdf_name = next(name for name in archived_names if name.endswith(".pdf"))
+        txt_name = next(name for name in archived_names if name.endswith(".txt"))
+        csv_text = archive.read(csv_name).decode("utf-8-sig")
+        pdf_bytes = archive.read(pdf_name)
+        txt_text = archive.read(txt_name).decode("utf-8")
+        assert "İZMİR KÂTİP ÇELEBİ ÜNİVERSİTESİ SINAV SONUÇ RAPORU" in csv_text
+        assert pdf_bytes.startswith(b"%PDF")
+        assert "Ogrenci Cevap Matrisi (Kanonik soru)" in csv_text
+        assert "Ogrenci Cevap Matrisi (Form pozisyonu)" in txt_text

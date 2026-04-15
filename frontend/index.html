@@ -164,8 +164,8 @@
             </label>
             <label class="full-span capture-field">
               <span>Ağırlık blokları yapıştır</span>
-              <textarea id="weightRangeInput" rows="5" placeholder="1-20 | Türkçe | 1&#10;21-40 | Matematik | 2"></textarea>
-              <small>Biçim: aralık veya tek soru | grup etiketi | ağırlık</small>
+              <textarea id="weightRangeInput" rows="5" placeholder="1-20 = 1&#10;21-40 = 3,33"></textarea>
+              <small>Biçim: soru aralığı = puan/ağırlık. Tek soru için `7 = 2,5` de yazabilirsin; `3,33` ve `3.33` birlikte kabul edilir.</small>
             </label>
             <div class="panel-actions">
               <button id="applyPermutationBtn" class="secondary-button" type="button">Kitapçık sırasını uygula</button>
@@ -448,6 +448,7 @@
             <button id="exportTxtBtn" class="secondary-button" type="button">TXT</button>
             <button id="exportPdfBtn" class="secondary-button" type="button">PDF</button>
             <button id="exportJsonBtn" class="ghost-button" type="button">JSON</button>
+            <button id="exportZipBtn" class="primary-button" type="button">ZIP (Tüm formatlar)</button>
           </div>
         </div>
 
@@ -524,13 +525,13 @@
         </label>
         <label>
           <span>Ağırlık</span>
-          <input data-field="weight" type="number" min="0.25" step="0.25">
+          <input data-field="weight" type="text" inputmode="decimal" placeholder="3,33">
         </label>
       </div>
       <div class="booklet-grid"></div>
     </article>
   </template>
 
-  <script src="/static/js/app.js?v=20260414a" type="module"></script>
+  <script src="/static/js/app.js?v=20260415c" type="module"></script>
 </body>
 </html>

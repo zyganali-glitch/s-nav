@@ -4,7 +4,13 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from .exam_service import build_answer_key_profile, normalize_answer, normalize_token
+from .exam_service import (
+    build_answer_key_profile,
+    has_explicit_canonical_mapping_evidence,
+    has_explicit_weight_evidence,
+    normalize_answer,
+    normalize_token,
+)
 from .form_template_service import list_form_templates, resolve_form_template, slugify_form_template_name
 
 
@@ -25,7 +31,14 @@ TURKISH_ALPHABET_COMPACT = "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ"
 REPLACEMENT_CHAR = "�"
 TEXT_FIELD_NAMES = {"student_name", "student_surname"}
 AUTO_REVERSE_FIELD_NAMES = TEXT_FIELD_NAMES
-SOFT_SINGLE_AUXILIARY_FIELD_NAMES = {"exam_date_day", "exam_date_month", "exam_date_year"}
+SOFT_SINGLE_AUXILIARY_FIELD_NAMES = {
+    "student_number",
+    "class_number",
+    "exam_date_day",
+    "exam_date_month",
+    "exam_date_year",
+}
+EXPLICIT_METADATA_SOURCES = {"explicit", "manual", "profile", "copied-profile"}
 
 EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
     "varsayilan": {
@@ -627,6 +640,110 @@ EXPLICIT_TEMPLATE_COORDINATE_SOURCES: dict[str, dict[str, Any]] = {
     },
 }
 
+EXPLICIT_TEMPLATE_COORDINATE_SOURCES["bsr-katipcelebi-snf"] = deepcopy(
+    EXPLICIT_TEMPLATE_COORDINATE_SOURCES["katipcelebi"]
+)
+EXPLICIT_TEMPLATE_COORDINATE_SOURCES["bsr-katipcelebi-snf"]["named_fields"] = [
+    {
+        "name": "student_number",
+        "start_row": 23,
+        "end_row": 32,
+        "start_column": 34,
+        "end_column": 45,
+        "axis": "D",
+        "normalized_choices": "0123456789",
+        "virtual": True,
+        "reverse_columns": True,
+    },
+    {
+        "name": "class_number",
+        "start_row": 23,
+        "end_row": 32,
+        "start_column": 31,
+        "end_column": 34,
+        "axis": "D",
+        "normalized_choices": "0123456789",
+        "virtual": True,
+        "reverse_columns": True,
+    },
+    {
+        "name": "exam_code_prefix",
+        "start_row": 44,
+        "end_row": 53,
+        "start_column": 45,
+        "end_column": 45,
+        "axis": "D",
+        "normalized_choices": "ABCDEFGHIJ",
+        "virtual": True,
+    },
+    {
+        "name": "exam_code_number",
+        "start_row": 44,
+        "end_row": 53,
+        "start_column": 42,
+        "end_column": 44,
+        "axis": "D",
+        "normalized_choices": "0123456789",
+        "virtual": True,
+        "reverse_columns": True,
+    },
+    {
+        "name": "exam_date_day",
+        "start_row": 45,
+        "end_row": 54,
+        "start_column": 33,
+        "end_column": 34,
+        "axis": "D",
+        "normalized_choices": "0123456789",
+        "virtual": True,
+        "reverse_columns": True,
+    },
+    {
+        "name": "exam_date_month",
+        "start_row": 46,
+        "end_row": 55,
+        "start_column": 33,
+        "end_column": 34,
+        "axis": "D",
+        "normalized_choices": "0123456789",
+        "virtual": True,
+        "reverse_columns": True,
+    },
+    {
+        "name": "exam_date_year",
+        "start_row": 44,
+        "end_row": 53,
+        "start_column": 33,
+        "end_column": 36,
+        "axis": "D",
+        "normalized_choices": "0123456789",
+        "virtual": True,
+        "reverse_columns": True,
+    },
+    {
+        "name": "student_surname",
+        "start_row": 2,
+        "end_row": 33,
+        "start_column": 8,
+        "end_column": 16,
+        "axis": "D",
+        "pattern": TURKISH_ALPHABET_FULL,
+        "virtual": True,
+        "reverse_columns": True,
+    },
+    {
+        "name": "student_name",
+        "start_row": 2,
+        "end_row": 33,
+        "start_column": 21,
+        "end_column": 30,
+        "axis": "D",
+        "pattern": TURKISH_ALPHABET_FULL,
+        "virtual": True,
+        "reverse_columns": True,
+    },
+]
+
 
 def decode_template_text(file_path: Path) -> str:
     blob = file_path.read_bytes()
@@ -1012,6 +1129,9 @@ def get_named_field_regions(template: dict[str, Any]) -> dict[str, dict[str, Any
 
 def get_template_coordinate_source(template: dict[str, Any]) -> dict[str, Any]:
     template_id = slugify_form_template_name(template.get("template", {}).get("id"))
+    direct_source = EXPLICIT_TEMPLATE_COORDINATE_SOURCES.get(template_id)
+    if direct_source:
+        return direct_source
     normalized_id = EXPLICIT_TEMPLATE_COORDINATE_ALIASES.get(template_id, template_id)
     return EXPLICIT_TEMPLATE_COORDINATE_SOURCES.get(normalized_id, {})
 
@@ -1131,6 +1251,21 @@ def decode_vertical_region_once(
     column_offsets = list(range(region["column_count"]))
     if region.get("reverse_columns"):
         column_offsets.reverse()
+    region_has_strong_mark = False
+
+    if allow_soft_single:
+        for column_offset in column_offsets:
+            column_index = region["start_column"] - 1 + column_offset
+            for row_offset in range(region["row_count"]):
+                row_index = region["start_row"] - 1 + row_offset + row_shift
+                if row_index < 0 or row_index >= len(matrix):
+                    continue
+                row = matrix[row_index]
+                if column_index < len(row) and row[column_index] >= threshold:
+                    region_has_strong_mark = True
+                    break
+            if region_has_strong_mark:
+                break
 
     for output_index, column_offset in enumerate(column_offsets, start=1):
         column_index = region["start_column"] - 1 + column_offset
@@ -1148,7 +1283,7 @@ def decode_vertical_region_once(
             segment,
             region["choices"],
             threshold,
-            allow_soft_single=allow_soft_single,
+            allow_soft_single=allow_soft_single and region_has_strong_mark,
         )
         decoded_tokens.append(token if token else "")
         if status == "multiple":
@@ -1222,6 +1357,7 @@ def build_vertical_region_candidates(
                     ),
                     "row_shift": row_shift,
                     "reverse_columns": reverse_columns,
+                    "default_reverse_columns": default_reverse_columns,
                     "decoded_tokens": decoded_tokens,
                     "warnings": warnings,
                 }
@@ -1231,6 +1367,7 @@ def build_vertical_region_candidates(
 
 def choose_preferred_field_variant(candidates_by_region: dict[str, list[dict[str, Any]]]) -> tuple[int, bool] | None:
     variant_support: dict[tuple[int, bool], int] = {}
+    variant_default_support: dict[tuple[int, bool], int] = {}
     for candidates in candidates_by_region.values():
         if not candidates:
             continue
@@ -1245,13 +1382,22 @@ def choose_preferred_field_variant(candidates_by_region: dict[str, list[dict[str
             variant_support[variant_key] = variant_support.get(variant_key, 0) + (
                 prefix_length + nonblank_count + alnum_count + max(warning_penalty, -1) + 1
             )
+            variant_default_support[variant_key] = variant_default_support.get(variant_key, 0) + int(
+                bool(candidate.get("reverse_columns")) == bool(candidate.get("default_reverse_columns"))
+            )
 
     if not variant_support:
         return None
 
     return max(
         variant_support.items(),
-        key=lambda item: (item[1], item[0][0] == 0, -abs(item[0][0]), item[0][1] is False),
+        key=lambda item: (
+            item[1],
+            variant_default_support.get(item[0], 0),
+            item[0][0] == 0,
+            -abs(item[0][0]),
+            item[0][1] is False,
+        ),
     )[0]
 
 
@@ -1422,6 +1568,54 @@ def build_decode_diagnostics(
     }
 
 
+def build_low_confidence_decode_error(decoded_sheet: dict[str, Any], exam: dict[str, Any] | None = None) -> str | None:
+    diagnostics = decoded_sheet.get("diagnostics") or {}
+    total_candidate_mark_count = int(diagnostics.get("total_candidate_mark_count", 0))
+    answer_region_candidate_mark_count = int(diagnostics.get("answer_region_candidate_mark_count", 0))
+    named_field_candidate_mark_count = int(diagnostics.get("named_field_candidate_mark_count", 0))
+    outside_candidate_mark_count = int(diagnostics.get("outside_candidate_mark_count", 0))
+    recognized_candidate_mark_count = answer_region_candidate_mark_count + named_field_candidate_mark_count
+    decoded_fields = decoded_sheet.get("decoded_fields") or {}
+    structured_identity_evidence_count = 0
+    if len(str(decoded_fields.get("student_number") or "")) >= 8:
+        structured_identity_evidence_count += 1
+    if len(normalize_decoded_text(decoded_fields.get("student_full_name") or "")) >= 5:
+        structured_identity_evidence_count += 1
+    if len(str(decoded_fields.get("class_number") or "")) >= 3 or len(normalize_decoded_text(decoded_fields.get("classroom") or "")) >= 4:
+        structured_identity_evidence_count += 1
+    if len(str(decoded_fields.get("exam_date") or "")) == 10:
+        structured_identity_evidence_count += 1
+
+    relevant_answer_count = 0
+    if exam:
+        expected_positions = get_expected_answer_positions(exam, decoded_sheet.get("booklet_code"))
+        answer_positions = get_sorted_answer_positions(decoded_sheet.get("answers") or {})
+        relevant_answer_count = len(
+            [position for position in answer_positions if not expected_positions or position in expected_positions]
+        )
+
+    if total_candidate_mark_count <= 0:
+        return None
+    if (
+        named_field_candidate_mark_count >= 18
+        and structured_identity_evidence_count >= 3
+        and (relevant_answer_count > 0 or answer_region_candidate_mark_count > 0)
+    ):
+        return None
+    if outside_candidate_mark_count < 20:
+        return None
+    if outside_candidate_mark_count <= recognized_candidate_mark_count:
+        return None
+
+    return (
+        "Cihaz verisi geldi ancak isaretlerin cogu beklenen cevap/kimlik bloklarinin disinda kaldi. "
+        f"Blok ici aday isaret={recognized_candidate_mark_count} "
+        f"(cevap={answer_region_candidate_mark_count}, kimlik={named_field_candidate_mark_count}), "
+        f"blok disi aday isaret={outside_candidate_mark_count}, toplam aday isaret={total_candidate_mark_count}. "
+        "Bu form guvenilir cozulmedi; secilen optik formati, kagit yonunu ve cihaz hizalamasini kontrol edip yeniden okutun."
+    )
+
+
 def decode_answers_from_sheet(
     matrix: list[list[int]],
     template: dict[str, Any],
@@ -1588,26 +1782,77 @@ def contiguous_answer_prefix_length(answer_positions: list[int]) -> int:
     return expected - 1
 
 
-def score_decoded_sheet_candidate(decoded_sheet: dict[str, Any], exam: dict[str, Any]) -> tuple[int, int, int, int, int, int, int]:
+def get_expected_answer_positions(exam: dict[str, Any], booklet_code: str | None = None) -> list[int]:
+    normalized_booklet = normalize_token(booklet_code)
+    positions: set[int] = set()
+
+    for question in exam.get("questions") or []:
+        booklet_mappings = question.get("booklet_mappings") or {}
+        if normalized_booklet:
+            target_mapping = None
+            for mapping_booklet, mapping in booklet_mappings.items():
+                if normalize_token(mapping_booklet) == normalized_booklet:
+                    target_mapping = mapping
+                    break
+            candidate_mappings = [target_mapping] if target_mapping else []
+        else:
+            candidate_mappings = list(booklet_mappings.values())
+
+        for mapping in candidate_mappings:
+            if not isinstance(mapping, dict):
+                continue
+            try:
+                position = int(mapping.get("position"))
+            except (TypeError, ValueError):
+                continue
+            if position > 0:
+                positions.add(position)
+
+    if positions:
+        return sorted(positions)
+
+    question_count = len(exam.get("questions") or [])
+    return list(range(1, question_count + 1))
+
+
+def contiguous_expected_answer_prefix_length(answer_positions: list[int], expected_positions: list[int]) -> int:
+    if not expected_positions:
+        return contiguous_answer_prefix_length(answer_positions)
+    answer_set = set(answer_positions)
+    prefix_length = 0
+    for expected_position in expected_positions:
+        if expected_position not in answer_set:
+            break
+        prefix_length += 1
+    return prefix_length
+
+
+def score_decoded_sheet_candidate(decoded_sheet: dict[str, Any], exam: dict[str, Any]) -> tuple[int, int, int, int, int, int, int, int]:
     diagnostics = decoded_sheet.get("diagnostics") or {}
     answer_positions = get_sorted_answer_positions(decoded_sheet.get("answers") or {})
-    contiguous_prefix = contiguous_answer_prefix_length(answer_positions)
-    decoded_question_count = int(decoded_sheet.get("decoded_question_count", 0))
+    expected_positions = get_expected_answer_positions(exam, decoded_sheet.get("booklet_code"))
+    relevant_answer_positions = [
+        position for position in answer_positions if not expected_positions or position in expected_positions
+    ]
+    out_of_range_answer_count = max(len(answer_positions) - len(relevant_answer_positions), 0)
+    contiguous_prefix = contiguous_expected_answer_prefix_length(relevant_answer_positions, expected_positions)
+    decoded_question_count = len(relevant_answer_positions)
     booklet_detected = 1 if normalize_token(decoded_sheet.get("booklet_code")) else 0
     named_field_detected = len(decoded_sheet.get("decoded_fields") or {})
     answer_region_candidate_mark_count = int(diagnostics.get("answer_region_candidate_mark_count", 0))
     outside_candidate_mark_count = int(diagnostics.get("outside_candidate_mark_count", 0))
-    expected_question_count = len(exam.get("questions") or [])
+    expected_question_count = len(expected_positions)
 
     score = decoded_question_count * 200
     score += contiguous_prefix * 60
-    score += answer_region_candidate_mark_count * 20
+    score += min(answer_region_candidate_mark_count, max(expected_question_count, decoded_question_count)) * 20
     score += booklet_detected * 150
     score += named_field_detected * 25
-    if answer_positions and answer_positions[0] == 1:
+    if relevant_answer_positions and (not expected_positions or relevant_answer_positions[0] == expected_positions[0]):
         score += 300
     if expected_question_count:
         score -= abs(expected_question_count - decoded_question_count) * 50
+    score -= out_of_range_answer_count * 220
     score -= min(outside_candidate_mark_count, 200)
 
     flip_preference = 1 if decoded_sheet.get("matrix_orientation") == "flip_vertical" else 0
@@ -1617,7 +1862,7 @@ def score_decoded_sheet_candidate(decoded_sheet: dict[str, Any], exam: dict[str,
         decoded_question_count,
         booklet_detected,
         named_field_detected,
-        answer_region_candidate_mark_count,
+        -out_of_range_answer_count,
         -outside_candidate_mark_count,
         flip_preference,
     )
@@ -1801,17 +2046,61 @@ def apply_optical_answer_key(
         updated_exam["questions"] = questions
 
     ready_count = sum(1 for booklet in updated_exam.get("booklet_codes", []) if normalize_token(booklet) in scanned_booklets)
-    updated_exam["answer_key_profile"] = build_answer_key_profile(
-        source_type="optical-read",
-        source_label="Operator optik cevap anahtari",
-        question_count=len(updated_exam.get("questions") or []),
-        import_format="device-optical",
-        booklet_strategy="sequential",
-        source_file=source_file,
-        canonical_mapping_source="single-booklet-sequential" if len(updated_exam.get("booklet_codes", [])) == 1 else "inferred-sequential",
-        weight_source="defaulted",
-        answer_source="optical",
-    )
+    existing_profile = deepcopy(updated_exam.get("answer_key_profile") or {})
+    prep_method_code = str(updated_exam.get("prep_method_code") or "manual").strip() or "manual"
+    booklet_count = len(updated_exam.get("booklet_codes", []))
+    preserved_canonical_mapping_source = str(existing_profile.get("canonical_mapping_source") or "")
+    if preserved_canonical_mapping_source not in EXPLICIT_METADATA_SOURCES:
+        preserved_canonical_mapping_source = ""
+    if not preserved_canonical_mapping_source and has_explicit_canonical_mapping_evidence(
+        updated_exam,
+        list(updated_exam.get("booklet_codes") or []),
+        list(updated_exam.get("questions") or []),
+    ):
+        preserved_canonical_mapping_source = "explicit"
+
+    preserved_weight_source = "explicit" if str(existing_profile.get("weight_source") or "") == "explicit" else ""
+    if not preserved_weight_source and has_explicit_weight_evidence(
+        updated_exam,
+        list(updated_exam.get("questions") or []),
+    ):
+        preserved_weight_source = "explicit"
+    metadata_source_file = existing_profile.get("metadata_source_file") or existing_profile.get("source_file")
+    metadata_import_format = str(existing_profile.get("metadata_import_format") or existing_profile.get("import_format") or "manual")
+    if metadata_import_format.endswith("+device-optical"):
+        metadata_import_format = metadata_import_format[: -len("+device-optical")]
+
+    if preserved_canonical_mapping_source or preserved_weight_source:
+        existing_source_type = str(existing_profile.get("source_type") or "")
+        hybrid_source_type = "hybrid-definition-optical" if existing_source_type in {"definition-file", "hybrid-definition-optical"} else "hybrid-metadata-optical"
+        hybrid_source_label = "Excel metadata + operator optik cevap anahtari" if hybrid_source_type == "hybrid-definition-optical" else "Operator metadata + operator optik cevap anahtari"
+        updated_exam["answer_key_profile"] = build_answer_key_profile(
+            source_type=hybrid_source_type,
+            source_label=hybrid_source_label,
+            question_count=len(updated_exam.get("questions") or []),
+            import_format=f"{metadata_import_format}+device-optical",
+            booklet_strategy=str(existing_profile.get("booklet_strategy") or "manual"),
+            source_file=source_file,
+            canonical_mapping_source=preserved_canonical_mapping_source or ("single-booklet-sequential" if booklet_count == 1 else "inferred-sequential"),
+            weight_source=preserved_weight_source or "defaulted",
+            answer_source="optical",
+        )
+        if metadata_source_file:
+            updated_exam["answer_key_profile"]["metadata_source_file"] = metadata_source_file
+        if metadata_import_format:
+            updated_exam["answer_key_profile"]["metadata_import_format"] = metadata_import_format
+    else:
+        updated_exam["answer_key_profile"] = build_answer_key_profile(
+            source_type="optical-read",
+            source_label="Operator optik cevap anahtari",
+            question_count=len(updated_exam.get("questions") or []),
+            import_format="device-optical",
+            booklet_strategy="sequential",
+            source_file=source_file,
+            canonical_mapping_source="single-booklet-sequential" if booklet_count == 1 else "inferred-sequential",
+            weight_source="defaulted",
+            answer_source="optical",
+        )
     updated_exam["answer_key_profile"]["detected_booklet_code"] = booklet_code
     updated_exam["answer_key_profile"]["ready_booklet_count"] = ready_count
     updated_exam["answer_key_profile"]["total_booklet_count"] = len(updated_exam.get("booklet_codes", []))
@@ -1939,6 +2228,10 @@ def decode_exam_sheets(
 
     for sheet in sheets:
         decoded = decode_sheet(sheet, template, exam, threshold)
+        low_confidence_error = build_low_confidence_decode_error(decoded, exam)
+        if low_confidence_error:
+            warnings.append(f"Form {decoded['sheet_no']}: {low_confidence_error}")
+            continue
         if not decoded["booklet_code"]:
             warnings.append(f"Form {decoded['sheet_no']}: kitapcik kodu cozulemedi")
             continue
@@ -1952,4 +2245,7 @@ def decode_exam_sheets(
                 "decoded_fields": decoded.get("decoded_fields", {}),
             }
         )
+
+    if not decoded_rows and warnings:
+        raise ValueError(warnings[0])
     return decoded_rows, warnings

@@ -203,6 +203,7 @@ const dom = {
   exportTxtBtn: document.getElementById("exportTxtBtn"),
   exportPdfBtn: document.getElementById("exportPdfBtn"),
   exportJsonBtn: document.getElementById("exportJsonBtn"),
+  exportZipBtn: document.getElementById("exportZipBtn"),
   statusPill: document.getElementById("statusPill"),
   questionCardTemplate: document.getElementById("questionCardTemplate"),
 };
@@ -255,6 +256,44 @@ function formatCellValue(value) {
     return entries.length
       ? entries.map(([key, item]) => `${key}: ${formatCellValue(item)}`).join(" · ")
       : "—";
+  }
+  return String(value);
+}
+
+function parseLocalizedNumber(value) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : Number.NaN;
+  }
+
+  const rawText = String(value ?? "").trim();
+  if (!rawText) {
+    return Number.NaN;
+  }
+
+  let normalized = rawText.replace(/\s+/g, "");
+  if (normalized.includes(",") && normalized.includes(".")) {
+    if (normalized.lastIndexOf(",") > normalized.lastIndexOf(".")) {
+      normalized = normalized.replaceAll(".", "").replace(",", ".");
+    } else {
+      normalized = normalized.replaceAll(",", "");
+    }
+  } else if (normalized.includes(",")) {
+    normalized = normalized.replaceAll(".", "").replace(",", ".");
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+}
+
+function formatEditableDecimal(value) {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value).replace(".", ",");
   }
   return String(value);
 }
@@ -817,6 +856,7 @@ function renderActionStates() {
   dom.exportTxtBtn.disabled = !hasSession;
   dom.exportPdfBtn.disabled = !hasSession;
   dom.exportJsonBtn.disabled = !hasSession;
+  dom.exportZipBtn.disabled = !hasSession;
 }
 
 async function requestDeviceRead() {
@@ -1146,7 +1186,7 @@ function renderQuestionBuilder() {
     fragment.querySelector('[data-field="canonical_no"]').dataset.questionIndex = String(questionIndex);
     fragment.querySelector('[data-field="group_label"]').value = question.group_label;
     fragment.querySelector('[data-field="group_label"]').dataset.questionIndex = String(questionIndex);
-    fragment.querySelector('[data-field="weight"]').value = question.weight;
+    fragment.querySelector('[data-field="weight"]').value = formatEditableDecimal(question.weight);
     fragment.querySelector('[data-field="weight"]').dataset.questionIndex = String(questionIndex);
 
     state.form.booklet_codes.forEach((booklet) => {
@@ -1746,7 +1786,13 @@ function collectFormPayload() {
     questions: state.form.questions.map((question) => ({
       canonical_no: Number(question.canonical_no),
       group_label: question.group_label,
-      weight: Number(question.weight),
+      weight: (() => {
+        const parsedWeight = parseLocalizedNumber(question.weight);
+        if (!Number.isFinite(parsedWeight) || parsedWeight <= 0) {
+          throw new Error(`Soru ${question.canonical_no} için ağırlık/puan pozitif sayı olmalıdır. Örn: 3,33`);
+        }
+        return parsedWeight;
+      })(),
       booklet_mappings: Object.fromEntries(
         state.form.booklet_codes.map((booklet) => [booklet, {
           position: Number(question.booklet_mappings[booklet]?.position || 0),
@@ -1804,6 +1850,8 @@ function applyPermutationPaste() {
   const bookletSequences = parsePermutationLines(dom.permutationPasteInput.value);
   const questionCount = bookletSequences[state.form.booklet_codes[0]].length;
   ensureQuestionCount(questionCount);
+  state.form.prep_method_code = "paste-ranges";
+  dom.prepMethodSelect.value = "paste-ranges";
 
   state.form.questions = state.form.questions.slice(0, questionCount).map((question, index) => {
     const nextQuestion = {
@@ -1834,25 +1882,36 @@ function parseWeightRangeLines(inputText) {
   }
 
   return lines.map((line) => {
-    const parts = line.split("|").map((item) => item.trim());
-    if (parts.length !== 3) {
-      throw new Error(`Ağırlık satırı çözülemedi: ${line}`);
+    let rangeText = "";
+    let weightText = "";
+    let groupLabel = "";
+
+    const legacyParts = line.split("|").map((item) => item.trim());
+    if (legacyParts.length === 3) {
+      [rangeText, groupLabel, weightText] = legacyParts;
+    } else {
+      const simplifiedMatch = line.match(/^(.+?)\s*(?:=|,)\s*(.+)$/);
+      if (!simplifiedMatch) {
+        throw new Error(`Ağırlık satırı çözülemedi: ${line}`);
+      }
+      rangeText = simplifiedMatch[1].trim();
+      weightText = simplifiedMatch[2].trim();
     }
-    const [rangeText, groupLabel, weightText] = parts;
+
     const rangeMatch = rangeText.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
     if (!rangeMatch) {
       throw new Error(`Soru aralığı çözülemedi: ${rangeText}`);
     }
     const start = Number(rangeMatch[1]);
     const end = Number(rangeMatch[2] || rangeMatch[1]);
-    const weight = Number(weightText);
+    const weight = parseLocalizedNumber(weightText);
     if (!Number.isFinite(weight) || weight <= 0) {
-      throw new Error(`Ağırlık pozitif sayı olmalıdır: ${line}`);
+      throw new Error(`Ağırlık/puan pozitif sayı olmalıdır: ${line}`);
     }
     return {
       start: Math.min(start, end),
       end: Math.max(start, end),
-      groupLabel: groupLabel || "Genel",
+      groupLabel: groupLabel || "",
       weight,
     };
   });
@@ -1862,6 +1921,8 @@ function applyWeightRanges() {
   const rules = parseWeightRangeLines(dom.weightRangeInput.value);
   const maxQuestion = Math.max(...rules.map((item) => item.end));
   ensureQuestionCount(maxQuestion);
+  state.form.prep_method_code = "paste-ranges";
+  dom.prepMethodSelect.value = "paste-ranges";
 
   state.form.questions = state.form.questions.map((question, index) => {
     const canonicalNo = index + 1;
@@ -1872,7 +1933,7 @@ function applyWeightRanges() {
     return {
       ...question,
       canonical_no: canonicalNo,
-      group_label: matchingRule.groupLabel,
+      group_label: matchingRule.groupLabel || question.group_label,
       weight: matchingRule.weight,
     };
   });
@@ -1881,7 +1942,7 @@ function applyWeightRanges() {
   renderAnswerKeyStatus();
   renderImportHint();
   renderActionStates();
-  setFeedback(`${formatNumber(rules.length)} ağırlık bloğu uygulandı.`, "success");
+  setFeedback(`${formatNumber(rules.length)} ağırlık/puan bloğu uygulandı. Gerekirse grup etiketlerini kartlardan ayrıca düzenleyebilirsin.`, "success");
 }
 
 async function copyProfileFromExistingExam() {
@@ -2168,6 +2229,8 @@ function bindEvents() {
   dom.downloadDefinitionTemplateBtn.addEventListener("click", () => downloadDefinitionTemplate().catch(showError));
   dom.uploadDefinitionFileBtn.addEventListener("click", () => handleDefinitionUpload().catch(showError));
   dom.uploadAnswerKeyBtn.addEventListener("click", () => handleAnswerKeyUpload().catch(showError));
+  dom.permutationPasteInput.addEventListener("input", renderActionStates);
+  dom.weightRangeInput.addEventListener("input", renderActionStates);
   dom.applyPermutationBtn.addEventListener("click", () => {
     try {
       applyPermutationPaste();
@@ -2313,6 +2376,7 @@ function bindEvents() {
   dom.exportTxtBtn.addEventListener("click", () => downloadSessionExport("txt").catch(showError));
   dom.exportPdfBtn.addEventListener("click", () => downloadSessionExport("pdf").catch(showError));
   dom.exportJsonBtn.addEventListener("click", () => downloadSessionExport("json").catch(showError));
+  dom.exportZipBtn.addEventListener("click", () => downloadSessionExport("zip").catch(showError));
   dom.importFileInput.addEventListener("change", () => {
     const file = dom.importFileInput.files?.[0];
     setFeedback(file ? `${file.name} seçildi. Şimdi "Seçili dosyayı oku" butonuna bas.` : "Dosya seçimi temizlendi.", file ? "success" : "warn");
@@ -2362,7 +2426,13 @@ function bindEvents() {
     const question = state.form.questions[questionIndex];
     if (target.dataset.field) {
       const field = target.dataset.field;
-      question[field] = field === "weight" || field === "canonical_no" ? Number(target.value || 0) : target.value;
+      if (field === "canonical_no") {
+        question[field] = Number(target.value || 0);
+      } else if (field === "weight") {
+        question[field] = target.value;
+      } else {
+        question[field] = target.value;
+      }
       renderAnswerKeyStatus();
       renderActionStates();
       return;
